@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/published/plan.deleted.v1.json",
+  "title": "plan.deleted payload (v1)",
+  "type": "object",
+  "required": ["planId"],
+  "additionalProperties": false,
+  "properties": {
+    "planId": { "type": "string", "format": "uuid" }
+  }
+}

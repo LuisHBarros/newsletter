@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/published/plan.updated.v1.json",
+  "title": "plan.updated payload (v1)",
+  "type": "object",
+  "required": ["planId"],
+  "additionalProperties": false,
+  "properties": {
+    "planId":          { "type": "string", "format": "uuid" },
+    "name":            { "type": "string" },
+    "description":     { "type": ["string", "null"] },
+    "price":           { "type": "number", "minimum": 0 },
+    "currency":        { "type": "string", "minLength": 3, "maxLength": 3 },
+    "billingInterval": { "enum": ["MONTHLY", "YEARLY"] },
+    "trialDays":       { "type": "integer", "minimum": 0 },
+    "active":          { "type": "boolean" }
+  }
+}
