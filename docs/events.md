@@ -1,6 +1,6 @@
 # Event Contracts
 
-Contratos dos eventos trocados entre microserviços do Assine via SQS. Todos os schemas formais ficam em `subscriptions/src/main/resources/contracts/` (JSON Schema Draft 2020-12) e são a fonte da verdade para validação.
+Contratos dos eventos trocados entre microserviços do Assine via SQS. Cada microserviço mantém seus schemas em `<service>/src/main/resources/contracts/` (`subscriptions`, `billing`, `content`). Todos seguem JSON Schema Draft 2020-12 e são a fonte da verdade para validação.
 
 ## Envelope
 
@@ -9,11 +9,11 @@ Todo evento publicado via outbox segue o envelope:
 ```json
 {
   "eventId": "7b9a3c...",           // UUID, chave de idempotência
-  "eventType": "subscription.requested",
   "schemaVersion": 1,
+  "occurredAt": "2026-04-16T19:45:00Z",
+  "eventType": "subscription.requested",
   "aggregateType": "Subscription",
   "aggregateId": "c5f8...",         // UUID do agregado
-  "occurredAt": "2026-04-16T19:45:00Z",
   "payload": { ... }                 // específico do evento
 }
 ```
@@ -24,7 +24,7 @@ Todo evento publicado via outbox segue o envelope:
 
 ## Eventos publicados por `subscriptions`
 
-Consumidos por `billing` (intents) e por `access` / `notifications` (state changes).
+Consumidos por `billing` (intents) e por `access` / `notifications` (state changes). Eventos `subscription.*` e `plan.*` são roteados pelo publisher para a fila inbound do billing; demais eventos vão para `assine-events` (fila padrão).
 
 | Evento | Tipo | Consumidor primário | Descrição |
 |---|---|---|---|
@@ -36,6 +36,17 @@ Consumidos por `billing` (intents) e por `access` / `notifications` (state chang
 | `subscription.updated` | state | `access` | Alteração administrativa. |
 | `subscription.expired` | state | `access`, `notifications` | Período corrente terminou sem renovação (FSM terminal). |
 | `plan.created` / `plan.updated` / `plan.deleted` | state | `billing` (sync de preços) | Ciclo de vida do catálogo. |
+
+### Exemplo — `subscription.past_due`
+
+```json
+{
+  "payload": {
+    "subscriptionId": "c5f8...",
+    "userId": "8a1b..."
+  }
+}
+```
 
 ### Exemplo — `subscription.requested`
 
@@ -183,7 +194,7 @@ Consumidos por `notifications` (envio de email) e `access` (sincronização de e
 | `content.newsletter.plans_updated` | state | `access` | Mapping newsletter ⇄ planos atualizado. |
 | `content.newsletter.archived` | state | `access` | Newsletter arquivada (soft-delete). |
 | `content.issue.published` | state | `notifications`, `access` | Edição publicada; payload carrega `htmlS3Key` e `planIds[]` para fan-out. |
-| `content.issue.updated` | state | `notifications` (opcional) | Re-render de issue já publicada (errata). |
+| `content.issue.updated` | state | `notifications` (opcional) | Re-render de issue já publicada (errata); payload com paridade a `content.issue.published`: `newsletterSlug`, `title`, `slug`, `htmlS3Key`, `publishedAt`, `planIds[]`, `version`. |
 
 ### Exemplo — `content.issue.published`
 
@@ -202,6 +213,30 @@ Consumidos por `notifications` (envio de email) e `access` (sincronização de e
     "title": "Edição 42: O retorno das queues FIFO",
     "slug": "edicao-42-o-retorno-das-queues-fifo",
     "htmlS3Key": "content/tech/a1b2c3d4-e5f6-7890-abcd-ef0123456789/v1/index.html",
+    "publishedAt": "2026-04-17T13:15:00Z",
+    "planIds": ["11111111-2222-3333-4444-555555555555"]
+  }
+}
+```
+
+### Exemplo — `content.issue.updated`
+
+```json
+{
+  "eventId": "be2f8c41-6a7c-5d8e-9f0a-1b2c3d4e5f6a",
+  "eventType": "content.issue.updated",
+  "schemaVersion": 1,
+  "aggregateType": "Issue",
+  "aggregateId": "a1b2c3d4-e5f6-7890-abcd-ef0123456789",
+  "occurredAt": "2026-04-17T14:30:00Z",
+  "payload": {
+    "newsletterId": "11111111-2222-3333-4444-555555555555",
+    "newsletterSlug": "tech",
+    "issueId": "a1b2c3d4-e5f6-7890-abcd-ef0123456789",
+    "version": 2,
+    "title": "Edição 42: O retorno das queues FIFO",
+    "slug": "edicao-42-o-retorno-das-queues-fifo",
+    "htmlS3Key": "content/tech/a1b2c3d4-e5f6-7890-abcd-ef0123456789/v2/index.html",
     "publishedAt": "2026-04-17T13:15:00Z",
     "planIds": ["11111111-2222-3333-4444-555555555555"]
   }
