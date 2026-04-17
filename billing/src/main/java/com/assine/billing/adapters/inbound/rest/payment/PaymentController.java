@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 /**
  * Read-only endpoints for billing payments. Creation is driven by inbound events
@@ -63,9 +64,21 @@ public class PaymentController {
         return ResponseEntity.ok(PageResponse.from(mapped));
     }
 
+    private UUID extractUserId(Jwt jwt) {
+        String subject = jwt.getSubject();
+        if (subject == null || subject.isBlank()) {
+            throw new AccessDeniedException("Invalid JWT: missing subject claim");
+        }
+        try {
+            return UUID.fromString(subject);
+        } catch (IllegalArgumentException e) {
+            throw new AccessDeniedException("Invalid JWT: subject is not a valid UUID");
+        }
+    }
+
     private void verifyVisibility(Payment payment, Jwt jwt) {
         if (isAdmin(jwt)) return;
-        UUID callerId = UUID.fromString(jwt.getSubject());
+        UUID callerId = extractUserId(jwt);
         if (payment.getCustomer() == null || !callerId.equals(payment.getCustomer().getUserId())) {
             throw new AccessDeniedException("Access denied to payment");
         }

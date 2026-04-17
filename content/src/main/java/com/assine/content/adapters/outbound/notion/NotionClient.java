@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -35,6 +36,7 @@ public class NotionClient implements NotionPort {
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(30))
                     .block();
             if (page == null) return Optional.empty();
 
@@ -67,6 +69,7 @@ public class NotionClient implements NotionPort {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(30))
                     .block();
             if (resp == null) return List.of();
 
@@ -96,6 +99,7 @@ public class NotionClient implements NotionPort {
                     .uri(uri)
                     .retrieve()
                     .bodyToMono(Map.class)
+                    .timeout(Duration.ofSeconds(30))
                     .block();
             if (resp == null) break;
 

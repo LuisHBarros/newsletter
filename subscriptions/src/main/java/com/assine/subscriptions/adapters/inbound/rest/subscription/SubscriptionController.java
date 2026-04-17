@@ -33,7 +33,14 @@ public class SubscriptionController {
 
     private UUID extractUserId(Jwt jwt) {
         String sub = jwt.getSubject();
-        return UUID.fromString(sub);
+        if (sub == null || sub.isBlank()) {
+            throw new AccessDeniedException("Invalid JWT: missing subject claim");
+        }
+        try {
+            return UUID.fromString(sub);
+        } catch (IllegalArgumentException e) {
+            throw new AccessDeniedException("Invalid JWT: subject is not a valid UUID");
+        }
     }
 
     private boolean isAdmin(Jwt jwt) {
