@@ -28,7 +28,7 @@ public class SqsEventConsumer {
     private final EventRouter eventRouter;
     private final ProcessedEventRepository processedEventRepository;
 
-    @SqsListener(queueNames = "${aws.sqs.inbound.queue:assine-billing}")
+    @SqsListener(queueNames = "${aws.sqs.inbound.queue:assine-events}")
     @Transactional
     public void consumeMessage(
             Map<String, Object> message,

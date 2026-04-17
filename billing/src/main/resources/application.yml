@@ -29,6 +29,12 @@ billing:
 
 aws:
   sqs:
+    events:
+      queue: assine-events
+    inbound:
+      queue: assine-events
+    subscriptions:
+      queue: assine-subscriptions.fifo
     listener:
       max-messages-per-poll: 10
       poll-timeout: 10s

@@ -25,6 +25,9 @@ public class SqsEventPublisher implements EventPublisher {
     @Value("${aws.sqs.events.queue:assine-events}")
     private String eventsQueue;
 
+    @Value("${aws.sqs.subscriptions.queue:assine-subscriptions.fifo}")
+    private String subscriptionsQueue;
+
     @Override
     public void publish(String eventType, Map<String, Object> payload) {
         publish(eventType, null, null, payload);
@@ -49,11 +52,57 @@ public class SqsEventPublisher implements EventPublisher {
                 "payload", payload
             );
 
-            sqsTemplate.send(eventsQueue, envelope);
-            log.info("Published event: {} (eventId: {}) to queue: {}", eventType, eventId, eventsQueue);
+            if (eventType != null && eventType.startsWith("billing.")) {
+                publishToSubscriptionsQueue(eventId, eventType, envelope, aggregateType, aggregateId, payload);
+            } else {
+                sqsTemplate.send(eventsQueue, envelope);
+                log.info("Published event: {} (eventId: {}) to queue: {}", eventType, eventId, eventsQueue);
+            }
         } catch (Exception e) {
-            log.error("Failed to publish event: {} (eventId: {}) to queue: {}", eventType, eventId, eventsQueue, e);
+            log.error("Failed to publish event: {} (eventId: {})", eventType, eventId, e);
             throw new RuntimeException("Failed to publish event", e);
         }
+    }
+
+    private void publishToSubscriptionsQueue(String eventId, String eventType, Map<String, Object> envelope,
+                                              String aggregateType, String aggregateId, Map<String, Object> payload) {
+        String messageGroupId = resolveMessageGroupId(aggregateType, aggregateId, payload);
+
+        sqsTemplate.send(to -> to
+            .queue(subscriptionsQueue)
+            .payload(envelope)
+            .messageGroupId(messageGroupId)
+            .messageDeduplicationId(eventId));
+
+        log.info("Published billing event: {} (eventId: {}) to FIFO queue: {} with MessageGroupId={}",
+            eventType, eventId, subscriptionsQueue, messageGroupId);
+    }
+
+    /**
+     * Resolves the SQS FIFO MessageGroupId to guarantee ordering per subscription.
+     *
+     * Priority 1: payload.subscriptionId
+     *   - For all billing.* events, subscriptionId in payload is the correct FIFO group key
+     *   - For Subscription events, aggregateId = subscriptionId (same value)
+     *   - For Payment events, aggregateId = paymentId (NOT subscriptionId) - using aggregateId would
+     *     break ordering because each payment would get its own group
+     *
+     * Priority 2: aggregateId when aggregateType = Subscription
+     *   - Fallback for Subscription events if subscriptionId is missing from payload
+     *
+     * Priority 3: aggregateId as last resort
+     *   - Only reached for non-Subscription events without subscriptionId in payload
+     */
+    private String resolveMessageGroupId(String aggregateType, String aggregateId, Map<String, Object> payload) {
+        Object subscriptionId = payload.get("subscriptionId");
+        if (subscriptionId != null && !subscriptionId.toString().isEmpty()) {
+            return subscriptionId.toString();
+        }
+        if ("Subscription".equals(aggregateType) && aggregateId != null && !aggregateId.isEmpty()) {
+            return aggregateId;
+        }
+        log.warn("No subscriptionId found for billing.* event (aggregateType={}, aggregateId={}); using aggregateId as fallback",
+            aggregateType, aggregateId);
+        return aggregateId != null ? aggregateId : "unknown";
     }
 }
