@@ -286,7 +286,7 @@ public class SubscriptionService {
      * publishes {@code billing.subscription.canceled}.
      */
     @Transactional
-    public void cancelSubscription(UUID id, boolean cancelAtPeriodEnd) {
+    public void cancelSubscription(UUID id, boolean cancelAtPeriodEnd, String reason) {
         Subscription subscription = subscriptionRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Subscription not found with id: " + id));
 
@@ -299,13 +299,14 @@ public class SubscriptionService {
         subscription.setCancelAtPeriodEnd(cancelAtPeriodEnd);
         Subscription savedSubscription = subscriptionRepository.save(subscription);
 
-        // Publish intent event for billing; billing owns the PSP cancellation and
-        // will confirm back via billing.subscription.canceled.
         Map<String, Object> payload = new HashMap<>();
         payload.put("subscriptionId", savedSubscription.getId().toString());
         payload.put("userId", savedSubscription.getUserId().toString());
         payload.put("planId", savedSubscription.getPlan().getId().toString());
         payload.put("cancelAtPeriodEnd", savedSubscription.getCancelAtPeriodEnd());
+        if (reason != null && !reason.isBlank()) {
+            payload.put("reason", reason);
+        }
         outboxEventService.createEvent(
                 "subscription.cancel_requested",
                 "Subscription",

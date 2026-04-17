@@ -139,21 +139,23 @@ public class SubscriptionController {
         UUID userId = extractUserId(jwt);
         verifyOwnership(subscription, userId, jwt);
 
-        subscriptionService.cancelSubscription(id, request.cancelAtPeriodEnd());
+        subscriptionService.cancelSubscription(id, request.cancelAtPeriodEnd(), request.reason());
         Subscription updated = subscriptionService.getSubscription(id);
         return ResponseEntity.ok(toResponse(updated));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteSubscription(
+    public ResponseEntity<SubscriptionResponse> deleteSubscription(
             @PathVariable UUID id,
+            @RequestParam(required = false) String reason,
             @AuthenticationPrincipal Jwt jwt) {
         Subscription subscription = subscriptionService.getSubscription(id);
         UUID userId = extractUserId(jwt);
         verifyOwnership(subscription, userId, jwt);
 
-        subscriptionService.deleteSubscription(id);
-        return ResponseEntity.noContent().build();
+        subscriptionService.cancelSubscription(id, true, reason);
+        Subscription updated = subscriptionService.getSubscription(id);
+        return ResponseEntity.ok(toResponse(updated));
     }
 
     private SubscriptionResponse toResponse(Subscription subscription) {

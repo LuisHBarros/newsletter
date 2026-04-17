@@ -358,7 +358,7 @@ class SubscriptionControllerTest {
 
         when(subscriptionService.getSubscription(testId)).thenReturn(subscription);
 
-        CancelSubscriptionRequest request = new CancelSubscriptionRequest(true);
+        CancelSubscriptionRequest request = new CancelSubscriptionRequest(true, "User requested cancellation");
 
         mockMvc.perform(post("/api/v1/subscriptions/" + testId + "/cancel")
                         .with(jwt().jwt(jwt -> jwt.subject(userId.toString()).claim("scope", java.util.List.of("subscriptions:write"))))
@@ -370,7 +370,7 @@ class SubscriptionControllerTest {
     }
 
     @Test
-    void shouldDeleteSubscription() throws Exception {
+    void shouldDeleteSubscriptionTriggersCancel() throws Exception {
         Plan plan = Plan.builder()
                 .id(planId)
                 .name("Premium Plan")
@@ -388,6 +388,7 @@ class SubscriptionControllerTest {
                 .userId(userId)
                 .plan(plan)
                 .status(SubscriptionStatus.ACTIVE)
+                .cancelAtPeriodEnd(true)
                 .metadata(Map.of())
                 .createdAt(Instant.now())
                 .updatedAt(Instant.now())
@@ -397,6 +398,42 @@ class SubscriptionControllerTest {
 
         mockMvc.perform(delete("/api/v1/subscriptions/" + testId)
                         .with(jwt().jwt(jwt -> jwt.subject(userId.toString()).claim("scope", java.util.List.of("subscriptions:write")))))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.cancelAtPeriodEnd").value(true));
+    }
+
+    @Test
+    void shouldDeleteSubscriptionWithReason() throws Exception {
+        Plan plan = Plan.builder()
+                .id(planId)
+                .name("Premium Plan")
+                .description("Premium plan")
+                .price(new BigDecimal("29.99"))
+                .currency("USD")
+                .billingInterval(BillingInterval.MONTHLY)
+                .trialDays(14)
+                .features(Map.of())
+                .active(true)
+                .build();
+
+        Subscription subscription = Subscription.builder()
+                .id(testId)
+                .userId(userId)
+                .plan(plan)
+                .status(SubscriptionStatus.ACTIVE)
+                .cancelAtPeriodEnd(true)
+                .metadata(Map.of())
+                .createdAt(Instant.now())
+                .updatedAt(Instant.now())
+                .build();
+
+        when(subscriptionService.getSubscription(testId)).thenReturn(subscription);
+
+        mockMvc.perform(delete("/api/v1/subscriptions/" + testId)
+                        .param("reason", "User wants to cancel")
+                        .with(jwt().jwt(jwt -> jwt.subject(userId.toString()).claim("scope", java.util.List.of("subscriptions:write")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
     }
 }

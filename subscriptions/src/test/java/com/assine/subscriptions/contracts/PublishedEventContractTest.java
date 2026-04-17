@@ -127,7 +127,7 @@ class PublishedEventContractTest {
         when(subscriptionRepository.findById(subscription.getId())).thenReturn(Optional.of(subscription));
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(i -> i.getArgument(0));
 
-        subscriptionService.cancelSubscription(subscription.getId(), true);
+        subscriptionService.cancelSubscription(subscription.getId(), true, null);
 
         Map<String, Object> payload = capturePayload("subscription.cancel_requested");
         assertValid("subscription.cancel_requested.v1.json", payload);

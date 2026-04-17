@@ -9,6 +9,7 @@
     "subscriptionId":    { "type": "string", "format": "uuid" },
     "userId":            { "type": "string", "format": "uuid" },
     "planId":            { "type": "string", "format": "uuid" },
-    "cancelAtPeriodEnd": { "type": "boolean" }
+    "cancelAtPeriodEnd": { "type": "boolean" },
+    "reason":            { "type": "string" }
   }
 }

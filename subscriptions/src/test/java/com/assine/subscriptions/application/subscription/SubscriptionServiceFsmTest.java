@@ -138,6 +138,25 @@ class SubscriptionServiceFsmTest {
                 () -> subscriptionService.expire(subscription.getId()));
     }
 
+    @Test
+    void shouldCancelSubscriptionFromActive() {
+        Subscription subscription = buildSubscription(SubscriptionStatus.ACTIVE);
+        when(subscriptionRepository.findById(subscription.getId())).thenReturn(Optional.of(subscription));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(i -> i.getArgument(0));
+
+        subscriptionService.cancelSubscription(subscription.getId(), true, "User requested");
+
+        assertThat(subscription.getCancelAtPeriodEnd()).isTrue();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> payloadCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(outboxEventService).createEvent(eq("subscription.cancel_requested"), eq("Subscription"),
+                eq(subscription.getId()), payloadCaptor.capture());
+
+        assertThat(payloadCaptor.getValue()).containsKeys("subscriptionId", "userId", "planId", "cancelAtPeriodEnd");
+        assertThat(payloadCaptor.getValue()).containsEntry("reason", "User requested");
+    }
+
     private Subscription buildSubscription(SubscriptionStatus status) {
         Plan plan = Plan.builder()
                 .id(UUID.randomUUID())

@@ -47,6 +47,7 @@ class OutboxEventE2ETest {
         registry.add("spring.cloud.aws.sqs.endpoint", localstack::getEndpoint);
         registry.add("spring.cloud.aws.secrets-manager.endpoint", localstack::getEndpoint);
         registry.add("aws.sqs.events.queue", () -> "assine-events");
+        registry.add("aws.sqs.billing.queue", () -> "assine-billing");
     }
 
     @Autowired
