@@ -103,15 +103,18 @@ public class IssueImportService {
         if (justPublished) {
             publishIssuePublishedEvent(saved, newsletter);
         } else if (existing.isPresent()) {
-            outboxEventService.createEvent(
-                    "content.issue.updated",
-                    "Issue",
-                    saved.getId(),
-                    Map.of(
-                            "newsletterId", newsletter.getId().toString(),
-                            "issueId", saved.getId().toString(),
-                            "version", saved.getVersion()
-                    ));
+            List<UUID> planIds = newsletterRepository.findPlanIdsByNewsletterId(newsletter.getId());
+            var payload = new java.util.LinkedHashMap<String, Object>();
+            payload.put("newsletterId", newsletter.getId().toString());
+            payload.put("newsletterSlug", newsletter.getSlug());
+            payload.put("issueId", saved.getId().toString());
+            payload.put("version", saved.getVersion());
+            payload.put("title", saved.getTitle());
+            payload.put("slug", saved.getSlug());
+            payload.put("htmlS3Key", Objects.requireNonNull(saved.getHtmlS3Key(), "htmlS3Key must not be null for issue " + saved.getId()));
+            payload.put("publishedAt", saved.getPublishedAt() != null ? saved.getPublishedAt().toString() : "");
+            payload.put("planIds", planIds.stream().map(UUID::toString).toList());
+            outboxEventService.createEvent("content.issue.updated", "Issue", saved.getId(), payload);
         }
 
         return new ImportResult(saved, existing.isEmpty(), justPublished);
@@ -129,7 +132,7 @@ public class IssueImportService {
                         "issueId", issue.getId().toString(),
                         "title", issue.getTitle(),
                         "slug", issue.getSlug(),
-                        "htmlS3Key", issue.getHtmlS3Key() != null ? issue.getHtmlS3Key() : "",
+                        "htmlS3Key", Objects.requireNonNull(issue.getHtmlS3Key(), "htmlS3Key must not be null for issue " + issue.getId()),
                         "publishedAt", issue.getPublishedAt() != null ? issue.getPublishedAt().toString() : Instant.now().toString(),
                         "planIds", planIds.stream().map(UUID::toString).toList()
                 ));

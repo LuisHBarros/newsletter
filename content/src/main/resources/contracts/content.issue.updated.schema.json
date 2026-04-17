@@ -13,11 +13,20 @@
     "occurredAt": { "type": "string", "format": "date-time" },
     "payload": {
       "type": "object",
-      "required": ["newsletterId", "issueId", "version"],
+      "required": ["newsletterId", "newsletterSlug", "issueId", "version", "title", "slug", "htmlS3Key", "publishedAt", "planIds"],
       "properties": {
         "newsletterId": { "type": "string", "format": "uuid" },
+        "newsletterSlug": { "type": "string" },
         "issueId": { "type": "string", "format": "uuid" },
-        "version": { "type": "integer", "minimum": 1 }
+        "version": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "htmlS3Key": { "type": "string", "minLength": 1 },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "planIds": {
+          "type": "array",
+          "items": { "type": "string", "format": "uuid" }
+        }
       }
     }
   }

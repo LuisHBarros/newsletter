@@ -144,12 +144,19 @@ class PublishedEventsContractTest {
     @Test
     void issueUpdatedValidEnvelopePasses() throws Exception {
         UUID issueId = UUID.randomUUID();
+        UUID newsletterId = UUID.randomUUID();
         Map<String, Object> env = envelope(
                 "content.issue.updated", "Issue", issueId,
                 Map.of(
-                        "newsletterId", UUID.randomUUID().toString(),
+                        "newsletterId", newsletterId.toString(),
+                        "newsletterSlug", "tech",
                         "issueId", issueId.toString(),
-                        "version", 3
+                        "version", 2,
+                        "title", "Edição de Abril",
+                        "slug", "edicao-de-abril",
+                        "htmlS3Key", "content/tech/" + issueId + "/v1/index.html",
+                        "publishedAt", Instant.parse("2026-04-17T12:00:00Z").toString(),
+                        "planIds", List.of(UUID.randomUUID().toString())
                 ));
         assertThat(validate("content.issue.updated.schema.json", env)).isEmpty();
     }
@@ -157,12 +164,57 @@ class PublishedEventsContractTest {
     @Test
     void issueUpdatedRejectsVersionZero() throws Exception {
         UUID issueId = UUID.randomUUID();
+        UUID newsletterId = UUID.randomUUID();
         Map<String, Object> env = envelope(
                 "content.issue.updated", "Issue", issueId,
                 Map.of(
-                        "newsletterId", UUID.randomUUID().toString(),
+                        "newsletterId", newsletterId.toString(),
+                        "newsletterSlug", "tech",
                         "issueId", issueId.toString(),
-                        "version", 0
+                        "version", 0,
+                        "title", "X",
+                        "slug", "x",
+                        "htmlS3Key", "content/tech/" + issueId + "/v1/index.html",
+                        "publishedAt", Instant.parse("2026-04-17T12:00:00Z").toString(),
+                        "planIds", List.of()
+                ));
+        assertThat(validate("content.issue.updated.schema.json", env)).isNotEmpty();
+    }
+
+    @Test
+    void issueUpdatedMissingHtmlS3KeyFails() throws Exception {
+        UUID issueId = UUID.randomUUID();
+        UUID newsletterId = UUID.randomUUID();
+        Map<String, Object> env = envelope(
+                "content.issue.updated", "Issue", issueId,
+                Map.of(
+                        "newsletterId", newsletterId.toString(),
+                        "newsletterSlug", "tech",
+                        "issueId", issueId.toString(),
+                        "version", 1,
+                        "title", "X",
+                        "slug", "x",
+                        "publishedAt", Instant.parse("2026-04-17T12:00:00Z").toString(),
+                        "planIds", List.of()
+                ));
+        assertThat(validate("content.issue.updated.schema.json", env)).isNotEmpty();
+    }
+
+    @Test
+    void issueUpdatedMissingTitleFails() throws Exception {
+        UUID issueId = UUID.randomUUID();
+        UUID newsletterId = UUID.randomUUID();
+        Map<String, Object> env = envelope(
+                "content.issue.updated", "Issue", issueId,
+                Map.of(
+                        "newsletterId", newsletterId.toString(),
+                        "newsletterSlug", "tech",
+                        "issueId", issueId.toString(),
+                        "version", 1,
+                        "slug", "x",
+                        "htmlS3Key", "content/tech/" + issueId + "/v1/index.html",
+                        "publishedAt", Instant.parse("2026-04-17T12:00:00Z").toString(),
+                        "planIds", List.of()
                 ));
         assertThat(validate("content.issue.updated.schema.json", env)).isNotEmpty();
     }
