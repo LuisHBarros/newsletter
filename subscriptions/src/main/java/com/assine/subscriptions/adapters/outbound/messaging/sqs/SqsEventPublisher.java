@@ -25,6 +25,9 @@ public class SqsEventPublisher implements EventPublisher {
     @Value("${aws.sqs.events.queue:assine-events}")
     private String eventsQueue;
 
+    @Value("${aws.sqs.billing.queue:assine-billing}")
+    private String billingQueue;
+
     @Override
     public void publish(String eventType, Map<String, Object> payload) {
         publish(eventType, null, null, payload);
@@ -49,10 +52,15 @@ public class SqsEventPublisher implements EventPublisher {
                 "payload", payload
             );
 
-            sqsTemplate.send(eventsQueue, envelope);
-            log.info("Published event: {} (eventId: {}) to queue: {}", eventType, eventId, eventsQueue);
+            if (eventType != null && (eventType.startsWith("subscription.") || eventType.startsWith("plan."))) {
+                sqsTemplate.send(billingQueue, envelope);
+                log.info("Published event: {} (eventId: {}) to billing queue: {}", eventType, eventId, billingQueue);
+            } else {
+                sqsTemplate.send(eventsQueue, envelope);
+                log.info("Published event: {} (eventId: {}) to queue: {}", eventType, eventId, eventsQueue);
+            }
         } catch (Exception e) {
-            log.error("Failed to publish event: {} (eventId: {}) to queue: {}", eventType, eventId, eventsQueue, e);
+            log.error("Failed to publish event: {} (eventId: {})", eventType, eventId, e);
             throw new RuntimeException("Failed to publish event", e);
         }
     }

@@ -57,9 +57,22 @@ aws_local sqs create-queue \
     \"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\":\\\"${SUBSCRIPTIONS_DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"${MAX_RECEIVE_COUNT}\\\"}\"
   }" 2>/dev/null || true
 
+# Standard DLQ for billing inbound queue (subscriptions -> billing)
+aws_local sqs create-queue --queue-name assine-billing-dlq 2>/dev/null || true
+
+BILLING_DLQ_ARN=$(aws_local sqs get-queue-attributes \
+  --queue-url "$(aws_local sqs get-queue-url --queue-name assine-billing-dlq --query 'QueueUrl' --output text)" \
+  --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+
+# Standard queue for events routed from subscriptions to billing
+aws_local sqs create-queue --queue-name assine-billing 2>/dev/null || true
+aws_local sqs set-queue-attributes \
+  --queue-url "$(aws_local sqs get-queue-url --queue-name assine-billing --query 'QueueUrl' --output text)" \
+  --attributes "{\"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\":\\\"${BILLING_DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"${MAX_RECEIVE_COUNT}\\\"}\"}"
+
 echo "Verifying queues..."
 
-for QUEUE in assine-events assine-events-dlq assine-subscriptions.fifo assine-subscriptions-dlq.fifo; do
+for QUEUE in assine-events assine-events-dlq assine-subscriptions.fifo assine-subscriptions-dlq.fifo assine-billing assine-billing-dlq; do
   URL=$(aws_local sqs get-queue-url --queue-name "$QUEUE" --query 'QueueUrl' --output text 2>/dev/null && echo "  ✓ $QUEUE" || echo "  ✗ $QUEUE (not found)")
 done
 

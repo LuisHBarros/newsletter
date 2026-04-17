@@ -32,6 +32,8 @@ aws:
     subscriptions:
       queue: assine-subscriptions.fifo
       dlq: assine-subscriptions-dlq.fifo
+    billing:
+      queue: assine-billing
     listener:
       max-messages-per-poll: 10
       poll-timeout: 10s
