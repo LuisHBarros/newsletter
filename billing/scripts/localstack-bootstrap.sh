@@ -15,7 +15,7 @@ echo "Creating DLQs..."
 # Standard DLQ for events published by billing (-> assine-events)
 aws_local sqs create-queue --queue-name assine-events-dlq 2>/dev/null || true
 
-# Standard DLQ for inbound queue (subscriptions -> billing)
+# DLQ for inbound billing queue (subscription.* / plan.* from subscriptions service)
 aws_local sqs create-queue --queue-name assine-billing-dlq 2>/dev/null || true
 
 EVENTS_DLQ_ARN=$(aws_local sqs get-queue-attributes \
@@ -34,14 +34,39 @@ aws_local sqs set-queue-attributes \
   --queue-url "$(aws_local sqs get-queue-url --queue-name assine-events --query 'QueueUrl' --output text)" \
   --attributes "{\"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\":\\\"${EVENTS_DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"${MAX_RECEIVE_COUNT}\\\"}\"}"
 
-# Standard queue for inbound events from subscriptions (subscription.requested, subscription.cancel_requested)
+# Inbound queue for subscription.* / plan.* events from subscriptions service
 aws_local sqs create-queue --queue-name assine-billing 2>/dev/null || true
 aws_local sqs set-queue-attributes \
   --queue-url "$(aws_local sqs get-queue-url --queue-name assine-billing --query 'QueueUrl' --output text)" \
   --attributes "{\"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\":\\\"${BILLING_DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"${MAX_RECEIVE_COUNT}\\\"}\"}"
 
+echo "Creating FIFO queues for billing -> subscriptions..."
+
+aws_local sqs create-queue \
+  --queue-name assine-subscriptions-dlq.fifo \
+  --attributes '{
+    "FifoQueue": "true",
+    "ContentBasedDeduplication": "false",
+    "DeduplicationScope": "messageGroup",
+    "FifoThroughputLimit": "perMessageGroupId"
+  }' 2>/dev/null || true
+
+SUBSCRIPTIONS_DLQ_ARN=$(aws_local sqs get-queue-attributes \
+  --queue-url "$(aws_local sqs get-queue-url --queue-name assine-subscriptions-dlq.fifo --query 'QueueUrl' --output text)" \
+  --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+
+aws_local sqs create-queue \
+  --queue-name assine-subscriptions.fifo \
+  --attributes "{
+    \"FifoQueue\": \"true\",
+    \"ContentBasedDeduplication\": \"false\",
+    \"DeduplicationScope\": \"messageGroup\",
+    \"FifoThroughputLimit\": \"perMessageGroupId\",
+    \"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\":\\\"${SUBSCRIPTIONS_DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"${MAX_RECEIVE_COUNT}\\\"}\"
+  }" 2>/dev/null || true
+
 echo "Verifying queues..."
-for QUEUE in assine-events assine-events-dlq assine-billing assine-billing-dlq; do
+for QUEUE in assine-events assine-events-dlq assine-billing assine-billing-dlq assine-subscriptions.fifo assine-subscriptions-dlq.fifo; do
   aws_local sqs get-queue-url --queue-name "$QUEUE" --query 'QueueUrl' --output text >/dev/null 2>&1 && echo "  OK $QUEUE" || echo "  MISSING $QUEUE"
 done
 
