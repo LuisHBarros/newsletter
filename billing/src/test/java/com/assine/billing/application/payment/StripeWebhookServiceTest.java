@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -62,6 +63,7 @@ class StripeWebhookServiceTest {
                 .providerSubscriptionRef("sub_ref")
                 .currentPeriodStart(Instant.parse("2026-04-01T00:00:00Z"))
                 .currentPeriodEnd(Instant.parse("2026-05-01T00:00:00Z"))
+                .billingInterval("MONTHLY")
                 .build();
         payment = Payment.builder()
                 .id(UUID.randomUUID())
@@ -78,6 +80,12 @@ class StripeWebhookServiceTest {
     @Test
     void succeededMarksPaymentAndActivatesSubscription() {
         when(paymentRepository.findByProviderPaymentRef("pi_123")).thenReturn(Optional.of(payment));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            BillingSubscription sub = invocation.getArgument(0);
+            sub.setCurrentPeriodStart(Instant.now());
+            sub.setCurrentPeriodEnd(Instant.now().plus(30, ChronoUnit.DAYS));
+            return null;
+        }).when(billingSubscriptionService).markActive(subscription);
 
         service.handlePaymentSucceeded("pi_123", null);
 
@@ -95,6 +103,12 @@ class StripeWebhookServiceTest {
 
         verify(outboxEventService).createEvent(eq("billing.subscription.activated"), eq("Subscription"),
                 eq(subscription.getSubscriptionId()), any(Map.class));
+
+        Map<String, Object> payload = captor.getValue();
+        assertThat(payload.get("currentPeriodStart")).isNotNull();
+        assertThat(payload.get("currentPeriodEnd")).isNotNull();
+        assertThat(Instant.parse(payload.get("currentPeriodStart").toString())).isAfter(Instant.now().minusSeconds(60));
+        assertThat(Instant.parse(payload.get("currentPeriodEnd").toString())).isAfter(Instant.now());
     }
 
     @Test

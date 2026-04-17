@@ -62,13 +62,13 @@ public class StripeWebhookService {
 
         paymentStatusUpdateService.execute(payment.getId(), PaymentStatus.SUCCEEDED, null);
 
-        publishSucceeded(payment);
-
         BillingSubscription subscription = payment.getSubscription();
         if (subscription != null) {
             billingSubscriptionService.markActive(subscription);
             publishActivated(subscription);
         }
+
+        publishSucceeded(payment);
     }
 
     /**
