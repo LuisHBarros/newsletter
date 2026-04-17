@@ -3,10 +3,13 @@ package com.assine.billing.application.outbox;
 import com.assine.billing.application.customer.BillingCustomerService;
 import com.assine.billing.application.customer.BillingSubscriptionService;
 import com.assine.billing.application.payment.CreatePaymentService;
+import com.assine.billing.application.payment.provider.PaymentProviderPort;
 import com.assine.billing.domain.customer.model.BillingCustomer;
 import com.assine.billing.domain.customer.model.BillingSubscription;
 import com.assine.billing.domain.customer.repository.BillingSubscriptionRepository;
 import com.assine.billing.domain.outbox.port.EventConsumer;
+import com.assine.billing.domain.plan.model.BillingPlan;
+import com.assine.billing.domain.plan.repository.BillingPlanRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -37,11 +40,16 @@ public class EventRouter implements EventConsumer {
     private final BillingSubscriptionRepository billingSubscriptionRepository;
     private final CreatePaymentService createPaymentService;
     private final OutboxEventService outboxEventService;
+    private final BillingPlanRepository planRepository;
+    private final PaymentProviderPort paymentProviderPort;
 
     private Map<String, BiConsumer<Map<String, Object>, UUID>> handlers() {
         return Map.of(
             "subscription.requested", this::handleSubscriptionRequested,
-            "subscription.cancel_requested", this::handleSubscriptionCancelRequested
+            "subscription.cancel_requested", this::handleSubscriptionCancelRequested,
+            "plan.created", this::handlePlanCreated,
+            "plan.updated", this::handlePlanUpdated,
+            "plan.deleted", this::handlePlanDeleted
         );
     }
 
@@ -80,7 +88,8 @@ public class EventRouter implements EventConsumer {
         // TRIAL handling: status=TRIAL in snapshot means skip charge, activate immediately.
         String status = (String) payload.get("status");
         if ("TRIAL".equals(status)) {
-            billingSubscriptionService.markActive(subscription);
+            int trialDays = toInteger(snapshot.get("trialDays"));
+            billingSubscriptionService.markTrialActive(subscription, trialDays);
             publishActivated(subscription);
             return;
         }
@@ -109,6 +118,13 @@ public class EventRouter implements EventConsumer {
             return;
         }
 
+        String providerRef = subscription.getProviderSubscriptionRef();
+        if (providerRef != null && !providerRef.isBlank()) {
+            paymentProviderPort.cancelSubscription(providerRef);
+        } else {
+            log.warn("No providerSubscriptionRef for subscriptionId={}, skipping provider cancel", subscriptionId);
+        }
+
         Instant canceledAt = Instant.now();
         billingSubscriptionService.markCanceled(subscription, canceledAt);
 
@@ -118,6 +134,42 @@ public class EventRouter implements EventConsumer {
         canceledPayload.put("reason", "user_requested");
         outboxEventService.createEvent("billing.subscription.canceled", "Subscription",
             subscriptionId, canceledPayload);
+    }
+
+    private void handlePlanCreated(Map<String, Object> payload, UUID eventId) {
+        UUID planId = UUID.fromString((String) payload.get("planId"));
+        BillingPlan plan = BillingPlan.builder()
+            .id(UUID.randomUUID())
+            .planId(planId)
+            .name((String) payload.get("name"))
+            .price(toBigDecimal(payload.get("price")))
+            .currency((String) payload.get("currency"))
+            .billingInterval((String) payload.get("billingInterval"))
+            .trialDays(toInteger(payload.get("trialDays")))
+            .active(toBoolean(payload.get("active")))
+            .build();
+        planRepository.save(plan);
+        log.info("Created billing plan: planId={}", planId);
+    }
+
+    private void handlePlanUpdated(Map<String, Object> payload, UUID eventId) {
+        UUID planId = UUID.fromString((String) payload.get("planId"));
+        BillingPlan plan = planRepository.findByPlanId(planId)
+            .orElseThrow(() -> new IllegalArgumentException("BillingPlan not found: " + planId));
+        plan.setName((String) payload.get("name"));
+        plan.setPrice(toBigDecimal(payload.get("price")));
+        plan.setCurrency((String) payload.get("currency"));
+        plan.setBillingInterval((String) payload.get("billingInterval"));
+        plan.setTrialDays(toInteger(payload.get("trialDays")));
+        plan.setActive(toBoolean(payload.get("active")));
+        planRepository.save(plan);
+        log.info("Updated billing plan: planId={}", planId);
+    }
+
+    private void handlePlanDeleted(Map<String, Object> payload, UUID eventId) {
+        UUID planId = UUID.fromString((String) payload.get("planId"));
+        planRepository.deleteByPlanId(planId);
+        log.info("Deleted billing plan: planId={}", planId);
     }
 
     private void publishActivated(BillingSubscription subscription) {
@@ -139,5 +191,18 @@ public class EventRouter implements EventConsumer {
 
     private static String toStringOrNull(Instant instant) {
         return instant == null ? null : instant.toString();
+    }
+
+    private Integer toInteger(Object value) {
+        if (value == null) return 0;
+        if (value instanceof Integer i) return i;
+        if (value instanceof Number n) return n.intValue();
+        return Integer.parseInt(value.toString());
+    }
+
+    private Boolean toBoolean(Object value) {
+        if (value == null) return false;
+        if (value instanceof Boolean b) return b;
+        return Boolean.parseBoolean(value.toString());
     }
 }

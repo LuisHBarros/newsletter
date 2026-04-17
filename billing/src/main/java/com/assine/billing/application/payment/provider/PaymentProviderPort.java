@@ -23,4 +23,10 @@ public interface PaymentProviderPort {
      * Cancel an in-flight / pending payment on the provider.
      */
     void cancel(String providerPaymentRef);
+
+    /**
+     * Cancel the subscription on the provider side.
+     * Should be idempotent — canceling an already-canceled subscription must not throw.
+     */
+    void cancelSubscription(String providerSubscriptionRef);
 }

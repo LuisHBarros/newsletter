@@ -7,6 +7,7 @@ import com.assine.billing.domain.payment.exception.PaymentException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Customer;
 import com.stripe.model.PaymentIntent;
+import com.stripe.model.Subscription;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.PaymentIntentCancelParams;
@@ -94,6 +95,20 @@ public class StripePaymentProviderAdapter implements PaymentProviderPort {
             // Canceling an already-terminal PI is non-fatal; log and swallow so callers
             // (e.g. subscription.cancel_requested handlers) aren't blocked on idempotent retries.
             log.warn("Stripe PaymentIntent cancel failed for {}: {}", providerPaymentRef, e.getMessage());
+        }
+    }
+
+    @Override
+    public void cancelSubscription(String providerSubscriptionRef) {
+        if (providerSubscriptionRef == null || providerSubscriptionRef.isBlank()) {
+            return;
+        }
+        try {
+            Subscription sub = Subscription.retrieve(providerSubscriptionRef);
+            sub.cancel();
+            log.info("Stripe Subscription canceled: id={}", providerSubscriptionRef);
+        } catch (StripeException e) {
+            log.warn("Stripe Subscription cancel failed for {}: {}", providerSubscriptionRef, e.getMessage());
         }
     }
 

@@ -34,4 +34,9 @@ public class FakePaymentProviderAdapter implements PaymentProviderPort {
     public void cancel(String providerPaymentRef) {
         log.info("FAKE cancel: providerPaymentRef={}", providerPaymentRef);
     }
+
+    @Override
+    public void cancelSubscription(String providerSubscriptionRef) {
+        log.info("FAKE cancelSubscription: providerSubscriptionRef={}", providerSubscriptionRef);
+    }
 }
