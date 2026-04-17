@@ -20,7 +20,7 @@
         "issueId": { "type": "string", "format": "uuid" },
         "title": { "type": "string" },
         "slug": { "type": "string" },
-        "htmlS3Key": { "type": "string" },
+        "htmlS3Key": { "type": "string", "minLength": 1 },
         "publishedAt": { "type": "string", "format": "date-time" },
         "planIds": { "type": "array", "items": { "type": "string", "format": "uuid" } }
       }

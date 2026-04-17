@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -53,7 +54,7 @@ public class IssueScheduleService {
                             "issueId", issue.getId().toString(),
                             "title", issue.getTitle(),
                             "slug", issue.getSlug(),
-                            "htmlS3Key", issue.getHtmlS3Key() != null ? issue.getHtmlS3Key() : "",
+                            "htmlS3Key", Objects.requireNonNull(issue.getHtmlS3Key(), "htmlS3Key must not be null for issue " + issue.getId()),
                             "publishedAt", issue.getPublishedAt().toString(),
                             "planIds", planIds.stream().map(UUID::toString).toList()
                     ));
