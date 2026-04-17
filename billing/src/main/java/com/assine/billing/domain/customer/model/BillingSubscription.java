@@ -51,6 +51,9 @@ public class BillingSubscription {
     @Column(name = "current_period_end")
     private Instant currentPeriodEnd;
 
+    @Column(name = "billing_interval", nullable = false, length = 20)
+    private String billingInterval;
+
     @Column(name = "canceled_at")
     private Instant canceledAt;
 

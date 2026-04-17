@@ -38,6 +38,7 @@ public class BillingSubscriptionService {
                     .providerSubscriptionRef("fake_sub_" + UUID.randomUUID())
                     .currentPeriodStart(now)
                     .currentPeriodEnd(periodEnd)
+                    .billingInterval(billingInterval)
                     .build();
                 BillingSubscription saved = subscriptionRepository.save(created);
                 log.info("Provisioned billing subscription: id={} subscriptionId={}",
@@ -49,6 +50,16 @@ public class BillingSubscriptionService {
     @Transactional
     public void markActive(BillingSubscription subscription) {
         subscription.setStatus(BillingSubscriptionStatus.ACTIVE);
+        subscription.setCurrentPeriodStart(Instant.now());
+        subscription.setCurrentPeriodEnd(Instant.now().plus(periodDays(subscription.getBillingInterval()), ChronoUnit.DAYS));
+        subscriptionRepository.save(subscription);
+    }
+
+    @Transactional
+    public void markTrialActive(BillingSubscription subscription, int trialDays) {
+        subscription.setStatus(BillingSubscriptionStatus.ACTIVE);
+        subscription.setCurrentPeriodStart(Instant.now());
+        subscription.setCurrentPeriodEnd(Instant.now().plus(trialDays, ChronoUnit.DAYS));
         subscriptionRepository.save(subscription);
     }
 
