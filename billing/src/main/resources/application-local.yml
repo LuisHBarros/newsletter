@@ -1,0 +1,80 @@
+spring:
+  config:
+    import:
+      - optional:aws-secretsmanager:assine/billing/rds
+
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
+      secrets-manager:
+        endpoint: http://localhost:4566
+      sqs:
+        endpoint: http://localhost:4566
+
+  jpa:
+    show-sql: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:9100/auth/realms/assine
+
+aws:
+  sqs:
+    events:
+      queue: assine-events
+      dlq: assine-events-dlq
+    inbound:
+      queue: assine-billing
+      dlq: assine-billing-dlq
+    listener:
+      max-messages-per-poll: 10
+      poll-timeout: 10s
+      message-visibility: 30s
+      max-receive-count: 5
+
+resilience4j:
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 500ms
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.lang.Exception
+    instances:
+      sqsPublisher:
+        base-config: default
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+    instances:
+      sqsPublisher:
+        base-config: default
+
+management:
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      cloudwatch:
+        enabled: false
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.assine.billing: DEBUG
+

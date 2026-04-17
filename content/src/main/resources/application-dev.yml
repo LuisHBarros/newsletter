@@ -1,0 +1,61 @@
+spring:
+  config:
+    import:
+      - optional:aws-secretsmanager:assine/content/rds
+      - optional:aws-secretsmanager:assine/content/notion-api-token
+      - optional:aws-secretsmanager:assine/content/notion-webhook-secret
+
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
+      secrets-manager:
+        endpoint: http://localhost:4566
+      sqs:
+        endpoint: http://localhost:4566
+      s3:
+        endpoint: http://localhost:4566
+        path-style-access-enabled: true
+
+  jpa:
+    show-sql: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:9100/auth/realms/assine
+
+aws:
+  sqs:
+    events:
+      queue: assine-events
+      dlq: assine-events-dlq
+    contentJobs:
+      queue: assine-content-jobs
+      dlq: assine-content-jobs-dlq
+    listener:
+      max-messages-per-poll: 10
+      poll-timeout: 10s
+      message-visibility: 30s
+      max-receive-count: 5
+
+management:
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      cloudwatch:
+        enabled: false
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.assine.content: DEBUG

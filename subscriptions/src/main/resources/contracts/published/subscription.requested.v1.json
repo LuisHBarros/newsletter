@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/published/subscription.requested.v1.json",
+  "title": "subscription.requested payload (v1)",
+  "type": "object",
+  "required": ["subscriptionId", "userId", "planId", "status", "planSnapshot"],
+  "additionalProperties": false,
+  "properties": {
+    "subscriptionId": { "type": "string", "format": "uuid" },
+    "userId":         { "type": "string", "format": "uuid" },
+    "planId":         { "type": "string", "format": "uuid" },
+    "status":         { "enum": ["PENDING_PAYMENT", "TRIAL"] },
+    "planSnapshot": {
+      "type": "object",
+      "required": ["price", "currency", "billingInterval", "trialDays"],
+      "additionalProperties": false,
+      "properties": {
+        "price":           { "type": "number", "minimum": 0 },
+        "currency":        { "type": "string", "minLength": 3, "maxLength": 3 },
+        "billingInterval": { "enum": ["MONTHLY", "YEARLY"] },
+        "trialDays":       { "type": "integer", "minimum": 0 }
+      }
+    },
+    "metadata": { "type": "object", "additionalProperties": true }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.com/contracts/content.issue.published.v1.json",
+  "title": "content.issue.published",
+  "type": "object",
+  "required": ["eventId", "eventType", "schemaVersion", "aggregateType", "aggregateId", "occurredAt", "payload"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "eventType": { "const": "content.issue.published" },
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "aggregateType": { "const": "Issue" },
+    "aggregateId": { "type": "string", "format": "uuid" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "payload": {
+      "type": "object",
+      "required": ["newsletterId", "newsletterSlug", "issueId", "title", "slug", "htmlS3Key", "publishedAt", "planIds"],
+      "properties": {
+        "newsletterId": { "type": "string", "format": "uuid" },
+        "newsletterSlug": { "type": "string" },
+        "issueId": { "type": "string", "format": "uuid" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "htmlS3Key": { "type": "string" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "planIds": { "type": "array", "items": { "type": "string", "format": "uuid" } }
+      }
+    }
+  }
+}

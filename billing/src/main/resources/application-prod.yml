@@ -1,0 +1,85 @@
+spring:
+  config:
+    import:
+      - aws-secretsmanager:assine/billing/rds
+      - aws-secretsmanager:assine/billing/stripe
+
+  cloud:
+    aws:
+      region:
+        static: sa-east-1
+      credentials:
+        instance-profile: true
+
+  jpa:
+    show-sql: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}
+
+aws:
+  sqs:
+    events:
+      queue: assine-events-prod
+      dlq: assine-events-prod-dlq
+    inbound:
+      queue: assine-billing-prod
+      dlq: assine-billing-prod-dlq
+    listener:
+      max-messages-per-poll: 10
+      poll-timeout: 20s
+      message-visibility: 60s
+      max-receive-count: 5
+
+resilience4j:
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 500ms
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.lang.Exception
+    instances:
+      sqsPublisher:
+        base-config: default
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 50
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 60s
+        permitted-number-of-calls-in-half-open-state: 10
+    instances:
+      sqsPublisher:
+        sliding-window-size: 50
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 60s
+        permitted-number-of-calls-in-half-open-state: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    export:
+      cloudwatch:
+        enabled: true
+        namespace: Assine/Subscriptions
+        step: 5m
+  tracing:
+    sampling:
+      probability: 0.01
+
+logging:
+  level:
+    root: WARN
+    com.assine.billing: INFO
+

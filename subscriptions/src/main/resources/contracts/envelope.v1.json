@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/envelope.v1.json",
+  "title": "Event Envelope v1",
+  "type": "object",
+  "required": ["eventId", "eventType", "schemaVersion", "aggregateType", "aggregateId", "occurredAt", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId":       { "type": "string", "format": "uuid" },
+    "eventType":     { "type": "string", "minLength": 1 },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "aggregateType": { "type": "string", "minLength": 1 },
+    "aggregateId":   { "type": "string", "format": "uuid" },
+    "occurredAt":    { "type": "string", "format": "date-time" },
+    "payload":       { "type": "object" }
+  }
+}

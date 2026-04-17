@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/published/subscription.past_due.v1.json",
+  "title": "subscription.past_due payload (v1)",
+  "type": "object",
+  "required": ["subscriptionId", "userId"],
+  "additionalProperties": false,
+  "properties": {
+    "subscriptionId": { "type": "string", "format": "uuid" },
+    "userId":         { "type": "string", "format": "uuid" }
+  }
+}

@@ -1,0 +1,71 @@
+spring:
+  config:
+    import:
+      - aws-secretsmanager:assine/content/rds
+      - aws-secretsmanager:assine/content/notion-api-token
+      - aws-secretsmanager:assine/content/notion-webhook-secret
+
+  cloud:
+    aws:
+      region:
+        static: sa-east-1
+      credentials:
+        instance-profile: true
+
+  jpa:
+    show-sql: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}
+
+aws:
+  sqs:
+    events:
+      queue: assine-events-prod
+      dlq: assine-events-prod-dlq
+    contentJobs:
+      queue: assine-content-jobs-prod
+      dlq: assine-content-jobs-prod-dlq
+    listener:
+      max-messages-per-poll: 10
+      poll-timeout: 20s
+      message-visibility: 60s
+      max-receive-count: 5
+
+content:
+  storage:
+    bucket: assine-content-prod
+  scheduler:
+    publish-scheduled:
+      enabled: false
+    reconcile-notion:
+      enabled: false
+  outbox:
+    relay:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    export:
+      cloudwatch:
+        enabled: true
+        namespace: Assine/Content
+        step: 5m
+  tracing:
+    sampling:
+      probability: 0.01
+
+logging:
+  level:
+    root: WARN
+    com.assine.content: INFO

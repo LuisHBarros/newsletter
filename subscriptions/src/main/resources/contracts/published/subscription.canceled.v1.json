@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/published/subscription.canceled.v1.json",
+  "title": "subscription.canceled payload (v1)",
+  "type": "object",
+  "required": ["subscriptionId", "userId", "canceledAt"],
+  "additionalProperties": false,
+  "properties": {
+    "subscriptionId": { "type": "string", "format": "uuid" },
+    "userId":         { "type": "string", "format": "uuid" },
+    "canceledAt":     { "type": "string", "format": "date-time" },
+    "reason":         { "type": ["string", "null"] }
+  }
+}

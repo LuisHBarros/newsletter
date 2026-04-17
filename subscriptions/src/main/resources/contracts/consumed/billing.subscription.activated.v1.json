@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/consumed/billing.subscription.activated.v1.json",
+  "title": "billing.subscription.activated payload (v1)",
+  "type": "object",
+  "required": ["subscriptionId", "currentPeriodStart", "currentPeriodEnd"],
+  "additionalProperties": true,
+  "properties": {
+    "subscriptionId":     { "type": "string", "format": "uuid" },
+    "currentPeriodStart": { "type": "string", "format": "date-time" },
+    "currentPeriodEnd":   { "type": "string", "format": "date-time" },
+    "billingRef":         { "type": ["string", "null"] }
+  }
+}

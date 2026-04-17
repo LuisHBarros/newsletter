@@ -1,0 +1,5 @@
+1. X-Ray + CloudWatch Traces — o CloudWatch Traces (via AWS X-Ray integrado) é essencial pra debugar latência entre API GW → ECS → Lambda → SQS. Já está implícito no CloudWatch, mas vale ativar explicitamente no código Golang com aws-xray-sdk-go.
+2. SQS FIFO para billing — para eventos de cobrança (Stripe webhooks → SQS), considere usar SQS FIFO com deduplication ID para evitar double-charge em caso de retry.
+3. Secrets Manager — credenciais do RDS, Stripe keys e tokens da Nuvem Fiscal devem sair de variáveis de ambiente e ir para o AWS Secrets Manager, com rotation automática.
+4. EventBridge Scheduler — já está implícito no content, mas vale tornar explícito: é ótimo para jobs recorrentes (envio de newsletter, geração de NFS-e) sem precisar manter uma task Fargate rodando 24/7.
+5. S3 Lifecycle Policies — para PDFs e imagens antigas, configure lifecycle para mover para S3 Glacier Instant Retrieval após X dias. Reduz custo de storage significativamente.

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/consumed/billing.payment.failed.v1.json",
+  "title": "billing.payment.failed payload (v1)",
+  "type": "object",
+  "required": ["subscriptionId", "attempts"],
+  "additionalProperties": true,
+  "properties": {
+    "subscriptionId": { "type": "string", "format": "uuid" },
+    "attempts":       { "type": "integer", "minimum": 1 },
+    "nextRetryAt":    { "type": ["string", "null"], "format": "date-time" },
+    "reason":         { "type": ["string", "null"] }
+  }
+}

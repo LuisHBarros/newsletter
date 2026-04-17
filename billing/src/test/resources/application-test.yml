@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Stub JWKs URI for test context; NimbusJwtDecoder is lazy so no network
+          # call happens at startup. Tests that need tokens use jwt() post-processor.
+          jwk-set-uri: http://localhost/.well-known/jwks.json
+  cloud:
+    compatibility-verifier:
+      enabled: false
+
+billing:
+  stripe:
+    enabled: false
+    api-key: ""
+    webhook-secret: ""
+
+aws:
+  sqs:
+    events:
+      queue: assine-events
+      dlq: assine-events-dlq
+    inbound:
+      queue: assine-billing
+      dlq: assine-billing-dlq

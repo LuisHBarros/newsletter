@@ -1,0 +1,121 @@
+spring:
+  application:
+    name: content
+  profiles:
+    active: local
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${assine/content/rds:host}:${assine/content/rds:port}/${assine/content/rds:dbname}
+    username: ${assine/content/rds:username}
+    password: ${assine/content/rds:password}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+aws:
+  sqs:
+    listener:
+      max-messages-per-poll: 10
+      poll-timeout: 10s
+      message-visibility: 30s
+      max-receive-count: 5
+
+content:
+  notion:
+    api-base-url: https://api.notion.com/v1
+    api-token: ${assine/content/notion-api-token:token}
+    webhook-secret: ${assine/content/notion-webhook-secret:secret}
+    timeout: 10s
+  storage:
+    bucket: assine-content-dev
+    key-prefix: content
+  scheduler:
+    publish-scheduled:
+      enabled: true
+      cron: "0 * * * * *"
+    reconcile-notion:
+      enabled: true
+      cron: "0 */15 * * * *"
+  outbox:
+    relay:
+      enabled: true
+      cron: "*/5 * * * * *"
+
+resilience4j:
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 500ms
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.lang.Exception
+    instances:
+      sqsPublisher:
+        base-config: default
+      notionClient:
+        base-config: default
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+    instances:
+      sqsPublisher:
+        base-config: default
+      notionClient:
+        base-config: default
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  tracing:
+    sampling:
+      probability: 0.1
+
+logging:
+  level:
+    root: WARN
+    com.assine.content: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+  flyway:
+    enabled: false
+content:
+  scheduler:
+    publish-scheduled:
+      enabled: false
+    reconcile-notion:
+      enabled: false
+  outbox:
+    relay:
+      enabled: false

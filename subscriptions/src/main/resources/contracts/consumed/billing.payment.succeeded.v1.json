@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/consumed/billing.payment.succeeded.v1.json",
+  "title": "billing.payment.succeeded payload (v1)",
+  "type": "object",
+  "required": ["subscriptionId", "currentPeriodStart", "currentPeriodEnd"],
+  "additionalProperties": true,
+  "properties": {
+    "subscriptionId":     { "type": "string", "format": "uuid" },
+    "currentPeriodStart": { "type": "string", "format": "date-time" },
+    "currentPeriodEnd":   { "type": "string", "format": "date-time" },
+    "invoiceId":          { "type": ["string", "null"] }
+  }
+}

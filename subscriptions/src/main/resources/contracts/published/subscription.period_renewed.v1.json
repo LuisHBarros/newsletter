@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://assine.local/contracts/published/subscription.period_renewed.v1.json",
+  "title": "subscription.period_renewed payload (v1)",
+  "type": "object",
+  "required": ["subscriptionId", "userId", "planId", "currentPeriodStart", "currentPeriodEnd"],
+  "additionalProperties": false,
+  "properties": {
+    "subscriptionId":     { "type": "string", "format": "uuid" },
+    "userId":             { "type": "string", "format": "uuid" },
+    "planId":             { "type": "string", "format": "uuid" },
+    "currentPeriodStart": { "type": "string", "format": "date-time" },
+    "currentPeriodEnd":   { "type": "string", "format": "date-time" }
+  }
+}
