@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Newsletter Notifications Service - Lambda + SQS + DynamoDB + SES
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  SenderEmail:
+    Type: String
+    Description: SES verified sender email address
+  SenderIdentityArn:
+    Type: String
+    Description: ARN of the verified SES sender identity
+  SubscriptionsAPIURL:
+    Type: String
+    Description: URL for subscriptions service API
+  SubscriptionsAPIKeyParameter:
+    Type: String
+    Description: SSM Parameter Store name holding the Subscriptions API key
+    Default: /newsletter/subscriptions-api-key
+  LogLevel:
+    Type: String
+    Default: info
+    AllowedValues: [debug, info, warn, error]
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: provided.al2
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        LOG_LEVEL: !Ref LogLevel
+        SENDER_EMAIL: !Ref SenderEmail
+        SUBSCRIPTIONS_API_URL: !Ref SubscriptionsAPIURL
+        SUBSCRIPTIONS_API_KEY: !Sub "{{resolve:ssm:${SubscriptionsAPIKeyParameter}}}"
+        TEMPLATE_PREFIX: !Sub "${Environment}-"
+        PROCESSED_EVENTS_TABLE: !Ref ProcessedEventsTable
+
+Resources:
+  # SQS Queue for incoming events
+  EventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "newsletter-events-${Environment}"
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EventsDLQ.Arn
+        maxReceiveCount: 3
+
+  # Dead Letter Queue
+  EventsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "newsletter-events-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600
+
+  # DynamoDB table for idempotency
+  ProcessedEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "processed-events-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: eventId
+          AttributeType: S
+        - AttributeName: handler
+          AttributeType: S
+      KeySchema:
+        - AttributeName: eventId
+          KeyType: HASH
+        - AttributeName: handler
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # Lambda Function
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "newsletter-notifications-${Environment}"
+      Handler: bootstrap
+      CodeUri: ./
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EventsQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+                - sqs:ChangeMessageVisibility
+              Resource: !GetAtt EventsQueue.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt ProcessedEventsTable.Arn
+            - Effect: Allow
+              Action:
+                - ses:SendTemplatedEmail
+                - sesv2:SendEmail
+              Resource: !Ref SenderIdentityArn
+            - Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+              Resource: '*'
+      Tracing: Active
+
+Outputs:
+  EventsQueueURL:
+    Description: URL of the events SQS queue
+    Value: !Ref EventsQueue
+  EventsQueueARN:
+    Description: ARN of the events SQS queue
+    Value: !GetAtt EventsQueue.Arn
+  DLQURL:
+    Description: URL of the dead letter queue
+    Value: !Ref EventsDLQ
+  FunctionARN:
+    Description: ARN of the notifications Lambda function
+    Value: !GetAtt NotificationsFunction.Arn
+  DynamoDBTableName:
+    Description: Name of the idempotency table
+    Value: !Ref ProcessedEventsTable
