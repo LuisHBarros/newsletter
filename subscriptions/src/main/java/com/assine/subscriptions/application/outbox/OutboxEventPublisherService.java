@@ -63,12 +63,17 @@ public class OutboxEventPublisherService {
         }
     }
 
+    private static final int MAX_SAFE_SHIFT = 62;
+
     /**
      * Calculate exponential backoff delay.
      * Formula: baseDelay * 2^retryCount, capped at maxDelay.
+     * retryCount is clamped to MAX_SAFE_SHIFT to prevent long-shift overflow
+     * on corrupted inputs (mirrors billing's OutboxEventPublisherService).
      */
     private Duration calculateBackoff(int retryCount) {
-        long delayMillis = BASE_DELAY.toMillis() * (1L << retryCount); // 30s * 2^retryCount
+        int safeRetryCount = Math.min(retryCount, MAX_SAFE_SHIFT);
+        long delayMillis = BASE_DELAY.toMillis() * (1L << safeRetryCount);
         long cappedMillis = Math.min(delayMillis, MAX_DELAY.toMillis());
         return Duration.ofMillis(cappedMillis);
     }

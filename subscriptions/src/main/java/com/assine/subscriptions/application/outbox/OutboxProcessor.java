@@ -1,7 +1,11 @@
 package com.assine.subscriptions.application.outbox;
 
 import com.assine.subscriptions.domain.outbox.model.OutboxEvent;
+import com.assine.subscriptions.domain.outbox.model.OutboxEventStatus;
 import com.assine.subscriptions.domain.outbox.repository.OutboxEventRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -19,8 +23,17 @@ public class OutboxProcessor {
 
     private final OutboxEventRepository outboxEventRepository;
     private final OutboxEventPublisherService publisherService;
+    private final MeterRegistry meterRegistry;
 
     private static final int BATCH_SIZE = 50;
+
+    @PostConstruct
+    public void registerMetrics() {
+        meterRegistry.gauge("outbox.pending.count",
+            Tags.of("service", "subscriptions"),
+            outboxEventRepository,
+            repo -> repo.countByStatus(OutboxEventStatus.PENDING));
+    }
 
     /**
      * Process pending events that are due for publishing.

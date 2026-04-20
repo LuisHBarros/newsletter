@@ -19,6 +19,7 @@ public interface OutboxEventRepository {
     void markAsFailed(UUID id, String error);
     int incrementRetryCount(UUID id);
     int deleteOldPublishedEvents(Instant cutoffDate);
+    long countByStatus(OutboxEventStatus status);
 
     /**
      * Find pending events that are due for publishing (nextAttemptAt <= now).

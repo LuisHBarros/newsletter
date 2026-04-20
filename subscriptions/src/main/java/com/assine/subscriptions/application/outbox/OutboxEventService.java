@@ -4,12 +4,14 @@ import com.assine.subscriptions.domain.outbox.model.OutboxEvent;
 import com.assine.subscriptions.domain.outbox.model.OutboxEventStatus;
 import com.assine.subscriptions.domain.outbox.repository.OutboxEventRepository;
 
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@Service
 public class OutboxEventService {
 
     private final OutboxEventRepository outboxEventRepository;
@@ -51,6 +53,7 @@ public class OutboxEventService {
         return outboxEventRepository.findByAggregateTypeAndAggregateId(aggregateType, aggregateId);
     }
 
+    @Transactional
     public void markAsPublished(UUID id) {
         if (!outboxEventRepository.findById(id).isPresent()) {
             throw new IllegalArgumentException("Outbox event not found with id: " + id);
@@ -58,6 +61,7 @@ public class OutboxEventService {
         outboxEventRepository.markAsPublished(id);
     }
 
+    @Transactional
     public void markAsFailed(UUID id, String error) {
         if (!outboxEventRepository.findById(id).isPresent()) {
             throw new IllegalArgumentException("Outbox event not found with id: " + id);
@@ -65,6 +69,7 @@ public class OutboxEventService {
         outboxEventRepository.markAsFailed(id, error);
     }
 
+    @Transactional
     public void incrementRetryCount(UUID id) {
         if (!outboxEventRepository.findById(id).isPresent()) {
             throw new IllegalArgumentException("Outbox event not found with id: " + id);
@@ -72,6 +77,7 @@ public class OutboxEventService {
         outboxEventRepository.incrementRetryCount(id);
     }
 
+    @Transactional
     public void deleteEvent(UUID id) {
         if (!outboxEventRepository.findById(id).isPresent()) {
             throw new IllegalArgumentException("Outbox event not found with id: " + id);
