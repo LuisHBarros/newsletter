@@ -8,6 +8,7 @@ import com.assine.billing.domain.customer.model.BillingSubscriptionStatus;
 import com.assine.billing.domain.payment.model.Payment;
 import com.assine.billing.domain.payment.model.PaymentStatus;
 import com.assine.billing.domain.payment.repository.PaymentRepository;
+import com.assine.billing.domain.outbox.repository.ProcessedEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +38,7 @@ class StripeWebhookServiceTest {
     @Mock private PaymentStatusUpdateService paymentStatusUpdateService;
     @Mock private BillingSubscriptionService billingSubscriptionService;
     @Mock private OutboxEventService outboxEventService;
+    @Mock private ProcessedEventRepository processedEventRepository;
 
     private StripeWebhookService service;
 
@@ -47,7 +49,7 @@ class StripeWebhookServiceTest {
     @BeforeEach
     void setUp() {
         service = new StripeWebhookService(paymentRepository, paymentStatusUpdateService,
-                billingSubscriptionService, outboxEventService);
+                billingSubscriptionService, outboxEventService, processedEventRepository);
 
         customer = BillingCustomer.builder()
                 .id(UUID.randomUUID())

@@ -3,11 +3,13 @@
   "$id": "https://assine.local/contracts/consumed/subscription.requested.v1.json",
   "title": "subscription.requested payload (v1) - consumed by billing",
   "type": "object",
-  "required": ["subscriptionId", "userId", "planId", "status", "planSnapshot"],
+  "required": ["subscriptionId", "userId", "userEmail", "planId", "status", "planSnapshot"],
   "additionalProperties": true,
   "properties": {
     "subscriptionId": { "type": "string", "format": "uuid" },
     "userId":         { "type": "string", "format": "uuid" },
+    "userEmail":      { "type": "string", "format": "email" },
+    "userName":       { "type": "string" },
     "planId":         { "type": "string", "format": "uuid" },
     "status":         { "enum": ["PENDING_PAYMENT", "TRIAL"] },
     "planSnapshot": {
@@ -18,7 +20,8 @@
         "price":           { "type": "number", "minimum": 0 },
         "currency":        { "type": "string", "minLength": 3, "maxLength": 3 },
         "billingInterval": { "enum": ["MONTHLY", "YEARLY"] },
-        "trialDays":       { "type": "integer", "minimum": 0 }
+        "trialDays":       { "type": "integer", "minimum": 0 },
+        "stripePriceId":   { "type": ["string", "null"] }
       }
     },
     "metadata": { "type": "object", "additionalProperties": true }

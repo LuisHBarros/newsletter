@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -68,6 +69,10 @@ public class BillingSubscriptionService {
         subscription.setStatus(BillingSubscriptionStatus.CANCELED);
         subscription.setCanceledAt(canceledAt != null ? canceledAt : Instant.now());
         subscriptionRepository.save(subscription);
+    }
+
+    public Optional<BillingSubscription> findBySubscriptionId(UUID subscriptionId) {
+        return subscriptionRepository.findBySubscriptionId(subscriptionId);
     }
 
     private long periodDays(String billingInterval) {

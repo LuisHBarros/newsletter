@@ -2,7 +2,7 @@ package com.assine.billing.application.outbox;
 
 import com.assine.billing.application.customer.BillingCustomerService;
 import com.assine.billing.application.customer.BillingSubscriptionService;
-import com.assine.billing.application.payment.CreatePaymentService;
+import com.assine.billing.application.payment.provider.PaymentProviderPort;
 import com.assine.billing.domain.customer.model.BillingCustomer;
 import com.assine.billing.domain.customer.model.BillingSubscription;
 import com.assine.billing.domain.customer.model.BillingSubscriptionStatus;
@@ -39,9 +39,9 @@ class EventRouterTest {
     @Mock private BillingCustomerService customerService;
     @Mock private BillingSubscriptionService billingSubscriptionService;
     @Mock private BillingSubscriptionRepository billingSubscriptionRepository;
-    @Mock private CreatePaymentService createPaymentService;
     @Mock private OutboxEventService outboxEventService;
     @Mock private BillingPlanRepository planRepository;
+    @Mock private PaymentProviderPort paymentProviderPort;
 
     private EventRouter router;
 
@@ -54,7 +54,7 @@ class EventRouterTest {
     @BeforeEach
     void setUp() {
         router = new EventRouter(customerService, billingSubscriptionService,
-                billingSubscriptionRepository, createPaymentService, outboxEventService, planRepository);
+                billingSubscriptionRepository, outboxEventService, planRepository, paymentProviderPort);
 
         subscriptionId = UUID.randomUUID();
         userId = UUID.randomUUID();
@@ -83,6 +83,7 @@ class EventRouterTest {
         Map<String, Object> payload = new HashMap<>();
         payload.put("subscriptionId", subscriptionId.toString());
         payload.put("userId", userId.toString());
+        payload.put("userEmail", "user@example.com");
         payload.put("planId", planId.toString());
         if (status != null) payload.put("status", status);
         Map<String, Object> snapshot = new HashMap<>();
@@ -90,39 +91,41 @@ class EventRouterTest {
         snapshot.put("currency", "BRL");
         snapshot.put("billingInterval", "MONTHLY");
         snapshot.put("trialDays", 14);
+        snapshot.put("stripePriceId", "price_test123");
         payload.put("planSnapshot", snapshot);
         return payload;
     }
 
     @Test
-    void subscriptionRequestedProvisionsAndRegistersChargeWithIdempotencyKey() {
-        when(customerService.findOrCreate(userId)).thenReturn(customer);
+    void subscriptionRequestedProvisionsAndCreatesStripeSubscriptionWithIdempotencyKey() {
+        when(customerService.findOrCreate(userId, "user@example.com", null)).thenReturn(customer);
         when(billingSubscriptionService.findOrCreate(eq(subscriptionId), eq(customer), eq(planId), eq("MONTHLY")))
                 .thenReturn(subscription);
+        when(paymentProviderPort.createSubscription(any(), any(), any(), any()))
+                .thenReturn("sub_test123");
 
         UUID eventId = UUID.randomUUID();
         router.consume("subscription.requested", requestedPayload(null), eventId);
 
-        verify(createPaymentService).execute(
+        verify(paymentProviderPort).createSubscription(
                 eq(customer.getId()),
-                eq(subscription),
-                eq(new BigDecimal("29.90")),
-                eq("BRL"),
+                eq("price_test123"),
+                eq(subscriptionId),
                 eq(eventId.toString()));
         // Async contract: activation is NOT set here — it must wait for the webhook.
         verify(billingSubscriptionService, never()).markActive(any());
-        verifyNoInteractions(outboxEventService);
     }
 
     @Test
     void subscriptionRequestedTrialActivatesImmediatelyAndSkipsCharge() {
-        when(customerService.findOrCreate(userId)).thenReturn(customer);
+        when(customerService.findOrCreate(userId, "user@example.com", null)).thenReturn(customer);
         when(billingSubscriptionService.findOrCreate(eq(subscriptionId), eq(customer), eq(planId), eq("MONTHLY")))
                 .thenReturn(subscription);
 
         router.consume("subscription.requested", requestedPayload("TRIAL"), UUID.randomUUID());
 
         verify(billingSubscriptionService).markTrialActive(subscription, 14);
+        @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(outboxEventService).createEvent(
                 eq("billing.subscription.activated"),
@@ -132,14 +135,14 @@ class EventRouterTest {
         Map<String, Object> payload = captor.getValue();
         assertThat(payload.get("currentPeriodStart")).isNotNull();
         assertThat(payload.get("currentPeriodEnd")).isNotNull();
-        verifyNoInteractions(createPaymentService);
+        verifyNoInteractions(paymentProviderPort);
     }
 
     @Test
     void subscriptionRequestedDoesNotRethrowWhenProviderCreationFailsSync() {
-        when(customerService.findOrCreate(userId)).thenReturn(customer);
+        when(customerService.findOrCreate(userId, "user@example.com", null)).thenReturn(customer);
         when(billingSubscriptionService.findOrCreate(any(), any(), any(), anyString())).thenReturn(subscription);
-        when(createPaymentService.execute(any(), any(), any(), anyString(), anyString()))
+        when(paymentProviderPort.createSubscription(any(), any(), any(), anyString()))
                 .thenThrow(new RuntimeException("card_declined"));
 
         // Must not escape — EventRouter logs and swallows so the SQS message isn't retried forever.
@@ -189,7 +192,7 @@ class EventRouterTest {
                 UUID.randomUUID());
 
         verifyNoInteractions(customerService, billingSubscriptionService,
-                billingSubscriptionRepository, createPaymentService, outboxEventService, planRepository);
+                billingSubscriptionRepository, outboxEventService, planRepository, paymentProviderPort);
     }
 
     @Test

@@ -2,8 +2,6 @@ package com.assine.billing.adapters.inbound.rest.webhook;
 
 import com.assine.billing.application.payment.StripeWebhookService;
 import com.assine.billing.config.StripeProperties;
-import com.assine.billing.domain.outbox.model.ProcessedEvent;
-import com.assine.billing.domain.outbox.repository.ProcessedEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +26,6 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -44,13 +41,6 @@ class StripeWebhookControllerTest {
     @Autowired private ObjectMapper objectMapper;
 
     @MockBean private StripeWebhookService webhookService;
-    @MockBean private ProcessedEventRepository processedEventRepository;
-
-    @BeforeEach
-    void defaultDedupOk() {
-        when(processedEventRepository.save(any(ProcessedEvent.class)))
-                .thenAnswer(i -> i.getArgument(0));
-    }
 
     @Test
     void returnsBadRequestWhenSignatureHeaderMissing() throws Exception {
@@ -86,7 +76,7 @@ class StripeWebhookControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"));
 
-        verify(webhookService).handlePaymentSucceeded(eq("pi_123"), any());
+        verify(webhookService).processWithDedup(any(com.stripe.model.Event.class));
     }
 
     @Test
@@ -102,17 +92,17 @@ class StripeWebhookControllerTest {
                         .content(payload))
                 .andExpect(status().isOk());
 
-        verify(webhookService).handlePaymentFailed(eq("pi_456"), any(), any());
+        verify(webhookService).processWithDedup(any(com.stripe.model.Event.class));
     }
 
     @Test
-    void duplicateEventsReturnOkAndAreNotDispatched() throws Exception {
+    void duplicateEventsReturnOkAndAreNotRetried() throws Exception {
         String eventId = "evt_dup_" + UUID.randomUUID();
         String payload = paymentIntentEvent(eventId, "payment_intent.succeeded", "pi_789", Map.of());
         String sigHeader = signHeader(payload, System.currentTimeMillis() / 1000L, SECRET);
 
         doThrow(new DataIntegrityViolationException("duplicate"))
-                .when(processedEventRepository).save(any(ProcessedEvent.class));
+                .when(webhookService).processWithDedup(any(com.stripe.model.Event.class));
 
         mockMvc.perform(post("/webhooks/stripe")
                         .header("Stripe-Signature", sigHeader)
@@ -120,8 +110,6 @@ class StripeWebhookControllerTest {
                         .content(payload))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("duplicate"));
-
-        verify(webhookService, never()).handlePaymentSucceeded(any(), any());
     }
 
     @Test
@@ -136,16 +124,24 @@ class StripeWebhookControllerTest {
                         .content(payload))
                 .andExpect(status().isOk());
 
-        verifyNoInteractions(webhookService);
+        verify(webhookService).processWithDedup(any(com.stripe.model.Event.class));
     }
 
     @Test
     void deterministicUuidIsStableForSameEventId() {
-        UUID a = StripeWebhookController.deterministicUuid("evt_same");
-        UUID b = StripeWebhookController.deterministicUuid("evt_same");
-        UUID c = StripeWebhookController.deterministicUuid("evt_other");
+        UUID a = StripeWebhookService.deterministicUuid("evt_same");
+        UUID b = StripeWebhookService.deterministicUuid("evt_same");
+        UUID c = StripeWebhookService.deterministicUuid("evt_other");
         org.assertj.core.api.Assertions.assertThat(a).isEqualTo(b);
         org.assertj.core.api.Assertions.assertThat(a).isNotEqualTo(c);
+        org.assertj.core.api.Assertions.assertThat(a.version()).isEqualTo(5);
+    }
+
+    @Test
+    void deterministicUuidIsDeterministicAcrossRuns() {
+        UUID snapshot = UUID.fromString("09dd8c49-e27a-5359-b811-0fe3dfd3150d");
+        UUID actual = StripeWebhookService.deterministicUuid("evt_snapshot_test");
+        org.assertj.core.api.Assertions.assertThat(actual).isEqualTo(snapshot);
     }
 
     private String paymentIntentEvent(String id, String type, String piId,
@@ -178,10 +174,6 @@ class StripeWebhookControllerTest {
         return "t=" + timestamp + ",v1=" + hex;
     }
 
-    /**
-     * Provides the {@link StripeProperties} bean to the WebMvc slice so the controller
-     * can verify signatures against a known test secret.
-     */
     @org.springframework.boot.test.context.TestConfiguration
     static class TestStripeProperties {
         @org.springframework.context.annotation.Bean

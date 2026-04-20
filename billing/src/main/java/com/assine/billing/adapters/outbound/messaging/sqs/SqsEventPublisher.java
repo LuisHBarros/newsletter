@@ -3,6 +3,7 @@ package com.assine.billing.adapters.outbound.messaging.sqs;
 import com.assine.billing.domain.outbox.port.EventPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.awspring.cloud.sqs.operations.SqsTemplate;
+import io.micrometer.tracing.Tracer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,7 @@ public class SqsEventPublisher implements EventPublisher {
 
     private final SqsTemplate sqsTemplate;
     private final ObjectMapper objectMapper;
+    private final Tracer tracer;
 
     @Value("${aws.sqs.events.queue:assine-events}")
     private String eventsQueue;
@@ -55,13 +57,26 @@ public class SqsEventPublisher implements EventPublisher {
             if (eventType != null && eventType.startsWith("billing.")) {
                 publishToSubscriptionsQueue(eventId, eventType, envelope, aggregateType, aggregateId, payload);
             } else {
-                sqsTemplate.send(eventsQueue, envelope);
+                sqsTemplate.send(to -> to
+                    .queue(eventsQueue)
+                    .payload(envelope)
+                    .header("AWSTraceHeader", getAwsTraceHeader()));
                 log.info("Published event: {} (eventId: {}) to queue: {}", eventType, eventId, eventsQueue);
             }
         } catch (Exception e) {
             log.error("Failed to publish event: {} (eventId: {})", eventType, eventId, e);
             throw new RuntimeException("Failed to publish event", e);
         }
+    }
+
+    private String getAwsTraceHeader() {
+        var currentSpan = tracer.currentSpan();
+        if (currentSpan != null && currentSpan.context() != null) {
+            var traceId = currentSpan.context().traceId();
+            var spanId = currentSpan.context().spanId();
+            return String.format("Root=%s;Parent=%s;Sampled=1", traceId, spanId);
+        }
+        return "";
     }
 
     private void publishToSubscriptionsQueue(String eventId, String eventType, Map<String, Object> envelope,
@@ -72,7 +87,8 @@ public class SqsEventPublisher implements EventPublisher {
             .queue(subscriptionsQueue)
             .payload(envelope)
             .messageGroupId(messageGroupId)
-            .messageDeduplicationId(eventId));
+            .messageDeduplicationId(eventId)
+            .header("AWSTraceHeader", getAwsTraceHeader()));
 
         log.info("Published billing event: {} (eventId: {}) to FIFO queue: {} with MessageGroupId={}",
             eventType, eventId, subscriptionsQueue, messageGroupId);

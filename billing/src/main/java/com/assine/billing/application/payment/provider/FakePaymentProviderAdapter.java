@@ -23,10 +23,19 @@ import java.util.UUID;
 public class FakePaymentProviderAdapter implements PaymentProviderPort {
 
     @Override
+    @Deprecated
     public String charge(UUID customerId, BigDecimal amount, String currency, String idempotencyKey) {
         String ref = "fake_pi_" + UUID.randomUUID();
         log.info("FAKE charge: customerId={} amount={} {} idempotencyKey={} -> ref={}",
             customerId, amount, currency, idempotencyKey, ref);
+        return ref;
+    }
+
+    @Override
+    public String createSubscription(UUID billingCustomerId, String stripePriceId, UUID subscriptionId, String idempotencyKey) {
+        String ref = "fake_sub_" + UUID.randomUUID();
+        log.info("FAKE createSubscription: billingCustomerId={} stripePriceId={} subscriptionId={} idempotencyKey={} -> ref={}",
+            billingCustomerId, stripePriceId, subscriptionId, idempotencyKey, ref);
         return ref;
     }
 

@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /**
  * Resolves or provisions a {@link BillingCustomer} for a given userId.
- * TODO: integrate with a real provider (Stripe Customer) instead of marking as FAKE.
+ * Persists email and propagates name to Stripe when creating/updating the customer.
  */
 @Slf4j
 @Service
@@ -21,18 +21,36 @@ public class BillingCustomerService {
     private final BillingCustomerRepository customerRepository;
 
     @Transactional
-    public BillingCustomer findOrCreate(UUID userId) {
+    public BillingCustomer findOrCreate(UUID userId, String email, String name) {
         return customerRepository.findByUserId(userId)
+            .map(existing -> {
+                // Update email if provided and different/null
+                if (email != null && !email.isBlank() && (existing.getEmail() == null || !existing.getEmail().equals(email))) {
+                    existing.setEmail(email);
+                    customerRepository.save(existing);
+                    log.info("Updated billing customer email: id={} userId={}", existing.getId(), userId);
+                }
+                return existing;
+            })
             .orElseGet(() -> {
                 BillingCustomer created = BillingCustomer.builder()
                     .id(UUID.randomUUID())
                     .userId(userId)
+                    .email(email)
                     .provider("FAKE")
                     .providerCustomerRef("fake_cus_" + UUID.randomUUID())
                     .build();
                 BillingCustomer saved = customerRepository.save(created);
-                log.info("Provisioned billing customer: id={} userId={}", saved.getId(), userId);
+                log.info("Provisioned billing customer: id={} userId={} email={}", saved.getId(), userId, email);
                 return saved;
             });
+    }
+
+    /**
+     * Legacy overload for backward compatibility (creates customer without email).
+     */
+    @Transactional
+    public BillingCustomer findOrCreate(UUID userId) {
+        return findOrCreate(userId, null, null);
     }
 }

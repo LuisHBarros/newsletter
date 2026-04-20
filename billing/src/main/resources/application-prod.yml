@@ -72,7 +72,7 @@ management:
     export:
       cloudwatch:
         enabled: true
-        namespace: Assine/Subscriptions
+        namespace: Assine/Billing
         step: 5m
   tracing:
     sampling:
@@ -82,4 +82,7 @@ logging:
   level:
     root: WARN
     com.assine.billing: INFO
+  structured:
+    format:
+      json: json
 

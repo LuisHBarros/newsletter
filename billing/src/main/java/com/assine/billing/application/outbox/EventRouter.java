@@ -2,7 +2,6 @@ package com.assine.billing.application.outbox;
 
 import com.assine.billing.application.customer.BillingCustomerService;
 import com.assine.billing.application.customer.BillingSubscriptionService;
-import com.assine.billing.application.payment.CreatePaymentService;
 import com.assine.billing.application.payment.provider.PaymentProviderPort;
 import com.assine.billing.domain.customer.model.BillingCustomer;
 import com.assine.billing.domain.customer.model.BillingSubscription;
@@ -23,9 +22,8 @@ import java.util.function.BiConsumer;
 
 /**
  * Routes inbound events (published by {@code subscriptions}) to billing-side actions:
- * {@code subscription.requested} triggers provisioning + charge; {@code subscription.cancel_requested}
- * triggers cancellation. Replaces the Kafka-based {@code TransferStatusConsumer} from the
- * original payment-service.
+ * {@code subscription.requested} triggers provisioning + Stripe subscription creation;
+ * {@code subscription.cancel_requested} triggers cancellation.
  *
  * <p>Receives {@code eventId} from the SQS consumer so it can be used as an idempotency-key
  * toward the payment provider.
@@ -38,7 +36,6 @@ public class EventRouter implements EventConsumer {
     private final BillingCustomerService customerService;
     private final BillingSubscriptionService billingSubscriptionService;
     private final BillingSubscriptionRepository billingSubscriptionRepository;
-    private final CreatePaymentService createPaymentService;
     private final OutboxEventService outboxEventService;
     private final BillingPlanRepository planRepository;
     private final PaymentProviderPort paymentProviderPort;
@@ -73,15 +70,16 @@ public class EventRouter implements EventConsumer {
 
         UUID subscriptionId = UUID.fromString((String) payload.get("subscriptionId"));
         UUID userId = UUID.fromString((String) payload.get("userId"));
+        String userEmail = (String) payload.get("userEmail");
+        String userName = (String) payload.get("userName");
         UUID planId = UUID.fromString((String) payload.get("planId"));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> snapshot = (Map<String, Object>) payload.get("planSnapshot");
-        BigDecimal price = toBigDecimal(snapshot.get("price"));
-        String currency = (String) snapshot.get("currency");
         String billingInterval = (String) snapshot.get("billingInterval");
+        String stripePriceId = (String) snapshot.get("stripePriceId");
 
-        BillingCustomer customer = customerService.findOrCreate(userId);
+        BillingCustomer customer = customerService.findOrCreate(userId, userEmail, userName);
         BillingSubscription subscription = billingSubscriptionService.findOrCreate(
             subscriptionId, customer, planId, billingInterval);
 
@@ -94,15 +92,25 @@ public class EventRouter implements EventConsumer {
             return;
         }
 
-        // Async flow: CreatePaymentService only registers the PaymentIntent (PENDING).
-        // billing.payment.succeeded + billing.subscription.activated are emitted later by
-        // StripeWebhookService when payment_intent.succeeded arrives. On synchronous
-        // provider-creation errors, billing.payment.failed is already emitted by
-        // CreatePaymentService before the exception escapes.
+        // Stripe Subscription flow: create subscription with DEFAULT_INCOMPLETE payment behavior.
+        // If stripePriceId is null and we're not in Stripe mode, fall back to fake reference.
         try {
-            createPaymentService.execute(customer.getId(), subscription, price, currency, eventId.toString());
+            String providerSubscriptionRef = paymentProviderPort.createSubscription(
+                customer.getId(), stripePriceId, subscriptionId, eventId.toString());
+
+            // Save the real Stripe subscription reference
+            subscription.setProviderSubscriptionRef(providerSubscriptionRef);
+            billingSubscriptionRepository.save(subscription);
+
+            log.info("Subscription created with provider: subscriptionId={} providerRef={}",
+                subscriptionId, providerSubscriptionRef);
+
+            // Note: Subscription activation happens via webhook (invoice.payment_succeeded)
+            // NOT immediately here. The subscription remains PENDING until payment confirmation.
         } catch (RuntimeException e) {
-            log.warn("Charge registration failed for subscriptionId={} reason={}", subscriptionId, e.getMessage());
+            log.warn("Subscription creation failed for subscriptionId={} reason={}", subscriptionId, e.getMessage());
+            // For backward compatibility / dev mode without stripePriceId, we could fall back
+            // to the old flow, but prefer explicit failure for now.
         }
     }
 

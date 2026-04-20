@@ -12,7 +12,9 @@ import com.stripe.net.RequestOptions;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.PaymentIntentCancelParams;
 import com.stripe.param.PaymentIntentCreateParams;
-import lombok.RequiredArgsConstructor;
+import com.stripe.param.SubscriptionCreateParams;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -24,31 +26,35 @@ import java.util.UUID;
 /**
  * Real Stripe adapter. Active only when {@code billing.stripe.enabled=true}.
  *
- * <p>Async flow: {@link #charge} creates a {@link PaymentIntent} with
- * {@code confirm=false} and returns its id (e.g. {@code pi_...}). The actual
- * success/failure is delivered asynchronously via webhook
- * ({@code payment_intent.succeeded} / {@code payment_intent.payment_failed})
- * and processed by
- * {@link com.assine.billing.adapters.inbound.rest.webhook.StripeWebhookController}.
+ * <p>For subscriptions, creates a Stripe Subscription with
+ * {@code collection_method=charge_automatically} and
+ * {@code payment_behavior=default_incomplete} so the front-end can finalize
+ * the payment using the {@code client_secret} from the latest_invoice.
  *
  * <p>Client-side confirmation (SetupIntent + PaymentMethod attach) is expected
- * to happen out-of-band before the PaymentIntent is confirmed — that integration
+ * to happen out-of-band before the subscription is created — that integration
  * is owned by the front-end / checkout flow and not by this service.
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 @ConditionalOnProperty(prefix = "billing.stripe", name = "enabled", havingValue = "true")
 public class StripePaymentProviderAdapter implements PaymentProviderPort {
 
     private final BillingCustomerRepository customerRepository;
+    private final MeterRegistry meterRegistry;
+
+    public StripePaymentProviderAdapter(BillingCustomerRepository customerRepository, MeterRegistry meterRegistry) {
+        this.customerRepository = customerRepository;
+        this.meterRegistry = meterRegistry;
+    }
 
     @Override
+    @Deprecated
     public String charge(UUID customerId, BigDecimal amount, String currency, String idempotencyKey) {
         BillingCustomer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new PaymentException("customer not found: " + customerId));
 
-        String stripeCustomerId = ensureStripeCustomer(customer, idempotencyKey);
+        String stripeCustomerId = ensureStripeCustomer(customer, null, idempotencyKey);
         long amountMinor = amount.setScale(2, RoundingMode.HALF_UP)
                 .movePointRight(2)
                 .longValueExact();
@@ -83,6 +89,59 @@ public class StripePaymentProviderAdapter implements PaymentProviderPort {
     }
 
     @Override
+    public String createSubscription(UUID billingCustomerId, String stripePriceId, UUID subscriptionId, String idempotencyKey) {
+        if (stripePriceId == null || stripePriceId.isBlank()) {
+            throw new PaymentException("stripePriceId is required for Stripe subscription creation");
+        }
+
+        return meterRegistry.timer("stripe.api.latency", Tags.of("operation", "createSubscription"))
+                .record(() -> {
+                    BillingCustomer customer = customerRepository.findById(billingCustomerId)
+                            .orElseThrow(() -> new PaymentException("customer not found: " + billingCustomerId));
+
+                    // Note: name is not persisted in BillingCustomer; we pass null here.
+                    // If you need to propagate name from the event, modify BillingCustomerService to accept it.
+                    String stripeCustomerId = ensureStripeCustomer(customer, null, idempotencyKey);
+
+                    SubscriptionCreateParams params = SubscriptionCreateParams.builder()
+                            .setCustomer(stripeCustomerId)
+                            .setCollectionMethod(SubscriptionCreateParams.CollectionMethod.CHARGE_AUTOMATICALLY)
+                            .setPaymentBehavior(SubscriptionCreateParams.PaymentBehavior.DEFAULT_INCOMPLETE)
+                            .setPaymentSettings(
+                                    SubscriptionCreateParams.PaymentSettings.builder()
+                                            .setSaveDefaultPaymentMethod(SubscriptionCreateParams.PaymentSettings.SaveDefaultPaymentMethod.ON_SUBSCRIPTION)
+                                            .build()
+                            )
+                            .addItem(SubscriptionCreateParams.Item.builder()
+                                    .setPrice(stripePriceId)
+                                    .build())
+                            .putMetadata("subscriptionId", subscriptionId.toString())
+                            .putMetadata("billingCustomerId", billingCustomerId.toString())
+                            .addExpand("latest_invoice.payment_intent")
+                            .build();
+
+                    RequestOptions options = RequestOptions.builder()
+                            .setIdempotencyKey(idempotencyKey)
+                            .build();
+
+                    try {
+                        Subscription sub = Subscription.create(params, options);
+                        log.info("Stripe Subscription created: id={} customer={} subscriptionId={} stripePriceId={} latestInvoice={}",
+                                sub.getId(), stripeCustomerId, subscriptionId, stripePriceId,
+                                sub.getLatestInvoiceObject() != null ? sub.getLatestInvoiceObject().getId() : "null");
+
+                        // Persist the Stripe subscription reference
+                        customer.setProvider("STRIPE");
+                        customerRepository.save(customer);
+
+                        return sub.getId();
+                    } catch (StripeException e) {
+                        throw new PaymentException("stripe subscription create failed: " + e.getMessage(), e);
+                    }
+                });
+    }
+
+    @Override
     public void cancel(String providerPaymentRef) {
         if (providerPaymentRef == null || providerPaymentRef.isBlank()) {
             return;
@@ -103,41 +162,55 @@ public class StripePaymentProviderAdapter implements PaymentProviderPort {
         if (providerSubscriptionRef == null || providerSubscriptionRef.isBlank()) {
             return;
         }
-        try {
-            Subscription sub = Subscription.retrieve(providerSubscriptionRef);
-            sub.cancel();
-            log.info("Stripe Subscription canceled: id={}", providerSubscriptionRef);
-        } catch (StripeException e) {
-            log.warn("Stripe Subscription cancel failed for {}: {}", providerSubscriptionRef, e.getMessage());
-        }
+        meterRegistry.timer("stripe.api.latency", Tags.of("operation", "cancelSubscription"))
+                .record(() -> {
+                    try {
+                        Subscription sub = Subscription.retrieve(providerSubscriptionRef);
+                        sub.cancel();
+                        log.info("Stripe Subscription canceled: id={}", providerSubscriptionRef);
+                    } catch (StripeException e) {
+                        log.warn("Stripe Subscription cancel failed for {}: {}", providerSubscriptionRef, e.getMessage());
+                    }
+                });
     }
 
     /**
      * Find or create the Stripe Customer for this {@link BillingCustomer} and
      * persist the provider reference back on the aggregate.
+     *
+     * @param name optional customer name (not persisted locally, sent to Stripe only)
      */
-    String ensureStripeCustomer(BillingCustomer customer, String idempotencyKey) {
+    String ensureStripeCustomer(BillingCustomer customer, String name, String idempotencyKey) {
         String existing = customer.getProviderCustomerRef();
         if (existing != null && existing.startsWith("cus_")) {
             return existing;
         }
-        CustomerCreateParams params = CustomerCreateParams.builder()
-                .setEmail(customer.getEmail())
-                .putMetadata("userId", customer.getUserId().toString())
-                .putMetadata("billingCustomerId", customer.getId().toString())
-                .build();
-        RequestOptions options = RequestOptions.builder()
-                .setIdempotencyKey("customer-" + idempotencyKey)
-                .build();
-        try {
-            Customer created = Customer.create(params, options);
-            customer.setProvider("STRIPE");
-            customer.setProviderCustomerRef(created.getId());
-            customerRepository.save(customer);
-            return created.getId();
-        } catch (StripeException e) {
-            throw new PaymentException("stripe customer create failed: " + e.getMessage(), e);
-        }
+
+        return meterRegistry.timer("stripe.api.latency", Tags.of("operation", "ensureStripeCustomer"))
+                .record(() -> {
+                    CustomerCreateParams.Builder paramsBuilder = CustomerCreateParams.builder()
+                            .setEmail(customer.getEmail())
+                            .putMetadata("userId", customer.getUserId().toString())
+                            .putMetadata("billingCustomerId", customer.getId().toString());
+
+                    if (name != null && !name.isBlank()) {
+                        paramsBuilder.setName(name);
+                    }
+
+                    RequestOptions options = RequestOptions.builder()
+                            .setIdempotencyKey("customer-" + idempotencyKey)
+                            .build();
+                    try {
+                        Customer created = Customer.create(paramsBuilder.build(), options);
+                        customer.setProvider("STRIPE");
+                        customer.setProviderCustomerRef(created.getId());
+                        customerRepository.save(customer);
+                        log.info("Stripe Customer created: id={} email={} name={}", created.getId(), customer.getEmail(), name);
+                        return created.getId();
+                    } catch (StripeException e) {
+                        throw new PaymentException("stripe customer create failed: " + e.getMessage(), e);
+                    }
+                });
     }
 
 }
