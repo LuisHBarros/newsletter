@@ -2,28 +2,33 @@ package internal
 
 import (
 	"os"
+	"strconv"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 type Config struct {
-	ProcessedEventsTable string
-	SenderEmail          string
-	TemplatePrefix       string
-	LogLevel             zapcore.Level
-	SubscriptionsAPIURL  string
-	SubscriptionsAPIKey  string
+	ProcessedEventsTable   string
+	SenderEmail            string
+	TemplatePrefix         string
+	LogLevel               zapcore.Level
+	SubscriptionsAPIURL    string
+	SubscriptionsAPIKey    string
+	SubscriptionsAPIKeySSM string
+	MaxSubscribersPerEvent int
 }
 
 func Load() *Config {
 	cfg := &Config{
-		ProcessedEventsTable: getEnv("PROCESSED_EVENTS_TABLE", "processed_events"),
-		SenderEmail:          getEnv("SENDER_EMAIL", "noreply@assine.news"),
-		TemplatePrefix:       getEnv("TEMPLATE_PREFIX", "assine"),
-		LogLevel:             zapcore.InfoLevel,
-		SubscriptionsAPIURL:  getEnv("SUBSCRIPTIONS_API_URL", ""),
-		SubscriptionsAPIKey:  getEnv("SUBSCRIPTIONS_API_KEY", ""),
+		ProcessedEventsTable:   getEnv("PROCESSED_EVENTS_TABLE", "processed_events"),
+		SenderEmail:            getEnv("SENDER_EMAIL", "noreply@assine.news"),
+		TemplatePrefix:         getEnv("TEMPLATE_PREFIX", "assine"),
+		LogLevel:               zapcore.InfoLevel,
+		SubscriptionsAPIURL:    getEnv("SUBSCRIPTIONS_API_URL", ""),
+		SubscriptionsAPIKey:    getEnv("SUBSCRIPTIONS_API_KEY", ""),
+		SubscriptionsAPIKeySSM: getEnv("SUBSCRIPTIONS_API_KEY_SSM", ""),
+		MaxSubscribersPerEvent: getEnvInt("MAX_SUBSCRIBERS_PER_EVENT", 5000),
 	}
 
 	if lvl := os.Getenv("LOG_LEVEL"); lvl != "" {
@@ -47,6 +52,15 @@ func NewLogger(level zapcore.Level) *zap.Logger {
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

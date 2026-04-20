@@ -13,6 +13,8 @@ import (
 
 const ttlDays = 7
 
+var ErrAlreadyProcessed = errors.New("event already processed")
+
 type Store struct {
 	client *dynamodb.Client
 	table  string
@@ -22,22 +24,7 @@ func NewStore(client *dynamodb.Client, tableName string) *Store {
 	return &Store{client: client, table: tableName}
 }
 
-func (s *Store) IsProcessed(ctx context.Context, eventID, handler string) (bool, error) {
-	resp, err := s.client.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(s.table),
-		Key: map[string]types.AttributeValue{
-			"eventId": &types.AttributeValueMemberS{Value: eventID},
-			"handler": &types.AttributeValueMemberS{Value: handler},
-		},
-		ProjectionExpression: aws.String("eventId"),
-	})
-	if err != nil {
-		return false, fmt.Errorf("dynamodb get: %w", err)
-	}
-	return resp.Item != nil, nil
-}
-
-func (s *Store) MarkProcessed(ctx context.Context, eventID, handler string) error {
+func (s *Store) ClaimProcessing(ctx context.Context, eventID, handler string) error {
 	_, err := s.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(s.table),
 		Item: map[string]types.AttributeValue{
@@ -50,9 +37,23 @@ func (s *Store) MarkProcessed(ctx context.Context, eventID, handler string) erro
 	if err != nil {
 		var ccfe *types.ConditionalCheckFailedException
 		if errors.As(err, &ccfe) {
-			return nil
+			return ErrAlreadyProcessed
 		}
 		return fmt.Errorf("dynamodb put: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) DeleteClaim(ctx context.Context, eventID, handler string) error {
+	_, err := s.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"eventId": &types.AttributeValueMemberS{Value: eventID},
+			"handler": &types.AttributeValueMemberS{Value: handler},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("dynamodb delete: %w", err)
 	}
 	return nil
 }

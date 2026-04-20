@@ -9,12 +9,14 @@ import (
 	"github.com/assine/newsletter/notifications/email"
 	"github.com/assine/newsletter/notifications/idempotency"
 	"github.com/assine/newsletter/notifications/internal"
+	"github.com/assine/newsletter/notifications/metrics"
 	"github.com/assine/newsletter/notifications/subscriptions"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"go.uber.org/zap"
 )
 
@@ -46,12 +48,26 @@ func (a *app) initHandler() error {
 			return
 		}
 
+		apiKey := a.cfg.SubscriptionsAPIKey
+		if apiKey == "" && a.cfg.SubscriptionsAPIKeySSM != "" {
+			ssmClient := ssm.NewFromConfig(awsCfg)
+			param, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
+				Name:           &a.cfg.SubscriptionsAPIKeySSM,
+				WithDecryption: boolPtr(true),
+			})
+			if err != nil {
+				a.handlerErr = fmt.Errorf("fetch SSM parameter %s: %w", a.cfg.SubscriptionsAPIKeySSM, err)
+				return
+			}
+			apiKey = *param.Parameter.Value
+		}
+
 		sesClient := sesv2.NewFromConfig(awsCfg)
 		dynamoClient := dynamodb.NewFromConfig(awsCfg)
 
 		emailClient := email.NewClient(sesClient, a.cfg.SenderEmail)
 		idempotencyStore := idempotency.NewStore(dynamoClient, a.cfg.ProcessedEventsTable)
-		subscriptionsClient, err := subscriptions.NewClient(a.cfg.SubscriptionsAPIURL, a.cfg.SubscriptionsAPIKey)
+		subscriptionsClient, err := subscriptions.NewClient(a.cfg.SubscriptionsAPIURL, apiKey, a.cfg.MaxSubscribersPerEvent, a.logger)
 		if err != nil {
 			a.handlerErr = fmt.Errorf("init subscriptions client: %w", err)
 			return
@@ -62,6 +78,8 @@ func (a *app) initHandler() error {
 	return a.handlerErr
 }
 
+func boolPtr(b bool) *bool { return &b }
+
 func (a *app) sqsHandler(ctx context.Context, sqsEvent events.SQSEvent) (events.SQSEventResponse, error) {
 	if err := a.initHandler(); err != nil {
 		a.logger.Error("failed to initialize handler", zap.Error(err))
@@ -71,12 +89,17 @@ func (a *app) sqsHandler(ctx context.Context, sqsEvent events.SQSEvent) (events.
 	var batchFailures []events.SQSBatchItemFailure
 
 	for _, record := range sqsEvent.Records {
+		if traceHeader, ok := record.MessageAttributes["AWSTraceHeader"]; ok && traceHeader.StringValue != nil {
+			ctx = context.WithValue(ctx, "X-Amzn-Trace-Id", *traceHeader.StringValue)
+		}
+
 		if err := a.handler.Handle(ctx, []byte(record.Body)); err != nil {
 			if errors.Is(err, ErrParseFail) {
 				a.logger.Warn("parse failure, sending to DLQ",
 					zap.String("messageId", record.MessageId),
 					zap.Error(err),
 				)
+				metrics.RecordBatchItemFailure(a.logger, "parse")
 				batchFailures = append(batchFailures, events.SQSBatchItemFailure{
 					ItemIdentifier: record.MessageId,
 				})
@@ -87,6 +110,7 @@ func (a *app) sqsHandler(ctx context.Context, sqsEvent events.SQSEvent) (events.
 				zap.String("messageId", record.MessageId),
 				zap.Error(err),
 			)
+			metrics.RecordBatchItemFailure(a.logger, "processing")
 			batchFailures = append(batchFailures, events.SQSBatchItemFailure{
 				ItemIdentifier: record.MessageId,
 			})

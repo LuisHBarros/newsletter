@@ -28,7 +28,7 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClient(tt.baseURL, "test-api-key")
+			client, err := NewClient(tt.baseURL, "test-api-key", 0, nil)
 			if (err != nil) != tt.wantError {
 				t.Errorf("NewClient() error = %v, wantError %v", err, tt.wantError)
 			}
@@ -122,7 +122,7 @@ func TestFindActiveSubscribers(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client, err := NewClient(server.URL, "")
+			client, err := NewClient(server.URL, "", 0, nil)
 			if err != nil {
 				t.Fatalf("NewClient() error = %v", err)
 			}
@@ -169,7 +169,7 @@ func TestFindActiveSubscribers_Pagination(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewClient(server.URL, "")
+	client, _ := NewClient(server.URL, "", 0, nil)
 	subscribers, err := client.FindActiveSubscribers(context.Background(), []string{"plan-1"})
 	if err != nil {
 		t.Fatalf("FindActiveSubscribers() error = %v", err)

@@ -22,8 +22,9 @@ const (
 	TypeSubscriptionPastDue   = "subscription.past_due"
 	TypeSubscriptionCanceled  = "subscription.canceled"
 	TypeSubscriptionExpired   = "subscription.expired"
-	TypeIssuePublished        = "content.issue.published"
-	TypeIssueUpdated          = "content.issue.updated"
+	// TypeInvoiceReceiptNeeded removed - Stripe handles receipts natively
+	TypeIssuePublished = "content.issue.published"
+	TypeIssueUpdated   = "content.issue.updated"
 )
 
 type SubscriptionPayload struct {

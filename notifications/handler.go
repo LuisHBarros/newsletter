@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/assine/newsletter/notifications/email"
 	"github.com/assine/newsletter/notifications/events"
 	"github.com/assine/newsletter/notifications/idempotency"
+	"github.com/assine/newsletter/notifications/metrics"
 	"github.com/assine/newsletter/notifications/subscriptions"
 	"github.com/assine/newsletter/notifications/tracing"
 	"go.uber.org/zap"
@@ -37,6 +39,8 @@ func NewHandler(emailClient *email.Client, idempotencyStore *idempotency.Store, 
 }
 
 func (h *Handler) Handle(ctx context.Context, recordBody []byte) error {
+	start := time.Now()
+
 	env, err := events.Parse(recordBody, h.logger)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrParseFail, err)
@@ -59,50 +63,52 @@ func (h *Handler) Handle(ctx context.Context, recordBody []byte) error {
 		return nil
 	}
 
-	ctx, segClose := tracing.BeginSubsegment(ctx, "idempotency-check")
-	already, err := h.idempotency.IsProcessed(ctx, env.EventID, handler)
+	ctx, segClose := tracing.BeginSubsegment(ctx, "claim-processing")
+	err = h.idempotency.ClaimProcessing(ctx, env.EventID, handler)
 	segClose()
 	if err != nil {
-		return fmt.Errorf("idempotency check: %w", err)
-	}
-	if already {
-		h.logger.Info("event already processed, skipping",
-			zap.String("eventId", env.EventID),
-			zap.String("handler", handler),
-		)
-		return nil
+		if errors.Is(err, idempotency.ErrAlreadyProcessed) {
+			h.logger.Info("event already processed, skipping",
+				zap.String("eventId", env.EventID),
+				zap.String("handler", handler),
+			)
+			return nil
+		}
+		return fmt.Errorf("claim processing: %w", err)
 	}
 
-	// Handle fan-out events (issue.published/issue.updated) separately
+	var handleErr error
 	if env.EventType == events.TypeIssuePublished || env.EventType == events.TypeIssueUpdated {
-		return h.handleFanOut(ctx, env, templateName, handler)
+		handleErr = h.handleFanOut(ctx, env, templateName, handler)
+	} else {
+		userEmail, err := resolveUserEmail(env)
+		if err != nil {
+			return err
+		}
+		handleErr = h.sendEmail(ctx, env, userEmail, templateName, handler)
 	}
 
-	userEmail, err := resolveUserEmail(env)
-	if err != nil {
-		return err
-	}
+	metrics.RecordProcessingDuration(h.logger, env.EventType, float64(time.Since(start).Milliseconds()))
 
-	return h.sendEmail(ctx, env, userEmail, templateName, handler)
+	return handleErr
 }
 
 // sendEmail sends a single email and marks the event as processed.
 func (h *Handler) sendEmail(ctx context.Context, env *events.Envelope, to, templateName, handler string) error {
 	req := email.BuildRequest(env, to, templateName, handler, h.logger)
 
-	// Send email BEFORE marking processed for at-least-once delivery
-	// Duplicate sends possible if crash between send and mark, but no lost emails
 	ctx, segClose := tracing.BeginSubsegment(ctx, "ses-send-email")
 	if err := h.email.SendTemplated(ctx, req.To, req.TemplateName, req.TemplateData); err != nil {
 		segClose()
+		metrics.RecordEmailFailed(h.logger, env.EventType)
+		if delErr := h.idempotency.DeleteClaim(ctx, env.EventID, req.Handler); delErr != nil {
+			h.logger.Warn("failed to delete claim after send failure",
+				zap.String("eventId", env.EventID),
+				zap.String("handler", req.Handler),
+				zap.Error(delErr),
+			)
+		}
 		return fmt.Errorf("send email: %w", err)
-	}
-	segClose()
-
-	ctx, segClose = tracing.BeginSubsegment(ctx, "mark-processed")
-	if err := h.idempotency.MarkProcessed(ctx, env.EventID, req.Handler); err != nil {
-		segClose()
-		return fmt.Errorf("mark processed: %w", err)
 	}
 	segClose()
 
@@ -113,6 +119,8 @@ func (h *Handler) sendEmail(ctx context.Context, env *events.Envelope, to, templ
 		zap.String("template", req.TemplateName),
 		zap.String("to", req.To),
 	)
+
+	metrics.RecordEmailSent(h.logger, env.EventType)
 
 	return nil
 }
@@ -154,31 +162,31 @@ func (h *Handler) handleFanOut(ctx context.Context, env *events.Envelope, templa
 	sem := make(chan struct{}, maxConcurrency)
 
 	for _, sub := range subscribers {
-		sub := sub // capture loop variable
+		sub := sub        // capture loop variable
+		sem <- struct{}{} // acquire before spawning
 		g.Go(func() error {
-			sem <- struct{}{}
 			defer func() { <-sem }()
 
 			// Check idempotency per subscriber (unique key: eventID + userID)
 			subscriberHandler := handler + ":" + sub.UserID
 
-			ctx, segClose := tracing.BeginSubsegment(ctx, "idempotency-check")
-			already, err := h.idempotency.IsProcessed(ctx, env.EventID, subscriberHandler)
+			ctx, segClose := tracing.BeginSubsegment(ctx, "claim-processing")
+			err := h.idempotency.ClaimProcessing(ctx, env.EventID, subscriberHandler)
 			segClose()
 			if err != nil {
-				h.logger.Error("idempotency check failed",
+				if errors.Is(err, idempotency.ErrAlreadyProcessed) {
+					h.logger.Info("already sent to subscriber, skipping",
+						zap.String("eventId", env.EventID),
+						zap.String("userId", sub.UserID),
+					)
+					return nil
+				}
+				h.logger.Error("claim processing failed",
 					zap.String("eventId", env.EventID),
 					zap.String("userId", sub.UserID),
 					zap.Error(err),
 				)
 				atomic.AddInt32(&failedCount, 1)
-				return nil // don't stop other goroutines
-			}
-			if already {
-				h.logger.Info("already sent to subscriber, skipping",
-					zap.String("eventId", env.EventID),
-					zap.String("userId", sub.UserID),
-				)
 				return nil
 			}
 
@@ -213,6 +221,8 @@ func (h *Handler) handleFanOut(ctx context.Context, env *events.Envelope, templa
 		zap.String("eventType", env.EventType),
 		zap.Int("subscriberCount", len(subscribers)),
 	)
+
+	metrics.RecordFanOutSubscribers(h.logger, env.EventType, len(subscribers))
 
 	return nil
 }

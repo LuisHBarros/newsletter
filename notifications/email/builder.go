@@ -92,6 +92,7 @@ func extractTemplateData(env *events.Envelope, logger *zap.Logger) map[string]st
 				data["version"] = fmt.Sprintf("%d", p.Version)
 			}
 		}
+
 	}
 
 	return data

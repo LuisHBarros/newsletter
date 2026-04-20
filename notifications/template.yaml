@@ -35,7 +35,8 @@ Globals:
         LOG_LEVEL: !Ref LogLevel
         SENDER_EMAIL: !Ref SenderEmail
         SUBSCRIPTIONS_API_URL: !Ref SubscriptionsAPIURL
-        SUBSCRIPTIONS_API_KEY: !Sub "{{resolve:ssm:${SubscriptionsAPIKeyParameter}}}"
+        SUBSCRIPTIONS_API_KEY_SSM: !Ref SubscriptionsAPIKeyParameter
+        MAX_SUBSCRIBERS_PER_EVENT: "5000"
         TEMPLATE_PREFIX: !Sub "${Environment}-"
         PROCESSED_EVENTS_TABLE: !Ref ProcessedEventsTable
 
@@ -45,7 +46,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub "newsletter-events-${Environment}"
-      VisibilityTimeout: 60
+      VisibilityTimeout: 180
       MessageRetentionPeriod: 1209600  # 14 days
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt EventsDLQ.Arn
@@ -92,7 +93,7 @@ Resources:
           Type: SQS
           Properties:
             Queue: !GetAtt EventsQueue.Arn
-            BatchSize: 10
+            BatchSize: 1
             FunctionResponseTypes:
               - ReportBatchItemFailures
       Policies:
@@ -109,6 +110,7 @@ Resources:
               Action:
                 - dynamodb:GetItem
                 - dynamodb:PutItem
+                - dynamodb:DeleteItem
               Resource: !GetAtt ProcessedEventsTable.Arn
             - Effect: Allow
               Action:
@@ -120,6 +122,9 @@ Resources:
                 - xray:PutTraceSegments
                 - xray:PutTelemetryRecords
               Resource: '*'
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SubscriptionsAPIKeyParameter}"
       Tracing: Active
 
 Outputs:

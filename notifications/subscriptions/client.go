@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Subscriber represents an active subscription with user info.
@@ -17,19 +19,25 @@ type Subscriber struct {
 
 // Client queries the subscriptions service for active subscribers.
 type Client struct {
-	baseURL string
-	apiKey  string
-	client  *http.Client
+	baseURL                string
+	apiKey                 string
+	client                 *http.Client
+	maxSubscribersPerEvent int
+	logger                 *zap.Logger
 }
 
-// NewClient creates a subscriptions API client.
-func NewClient(baseURL, apiKey string) (*Client, error) {
+func NewClient(baseURL, apiKey string, maxSubscribersPerEvent int, logger *zap.Logger) (*Client, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("baseURL cannot be empty")
 	}
+	if maxSubscribersPerEvent <= 0 {
+		maxSubscribersPerEvent = 5000
+	}
 	return &Client{
-		baseURL: baseURL,
-		apiKey:  apiKey,
+		baseURL:                baseURL,
+		apiKey:                 apiKey,
+		maxSubscribersPerEvent: maxSubscribersPerEvent,
+		logger:                 logger,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -57,12 +65,28 @@ func (c *Client) FindActiveSubscribers(ctx context.Context, planIDs []string) ([
 	page := 0
 
 	for {
+		select {
+		case <-ctx.Done():
+			return allSubscribers, ctx.Err()
+		default:
+		}
+
 		subscribers, totalPages, err := c.fetchSubscribersPage(ctx, planIDs, page)
 		if err != nil {
 			return nil, err
 		}
 
 		allSubscribers = append(allSubscribers, subscribers...)
+
+		if len(allSubscribers) >= c.maxSubscribersPerEvent {
+			if c.logger != nil {
+				c.logger.Warn("subscriber fetch capped at max",
+					zap.Int("total", len(allSubscribers)),
+					zap.Int("max", c.maxSubscribersPerEvent),
+				)
+			}
+			break
+		}
 
 		if page >= totalPages-1 {
 			break
