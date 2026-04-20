@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -55,6 +56,7 @@ public class SubscriptionController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('SCOPE_subscriptions:write')")
     public ResponseEntity<SubscriptionResponse> createSubscription(
             @Valid @RequestBody CreateSubscriptionRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -62,8 +64,15 @@ public class SubscriptionController {
         if (!isAdmin(jwt) && !currentUserId.equals(request.userId())) {
             throw new AccessDeniedException("Cannot create subscription on behalf of another user");
         }
+
+        // Extract email and name from JWT claims if not provided in request
+        String userEmail = request.userEmail() != null ? request.userEmail() : jwt.getClaimAsString("email");
+        String userName = request.userName() != null ? request.userName() : jwt.getClaimAsString("name");
+
         Subscription subscription = subscriptionService.createSubscription(
                 request.userId(),
+                userEmail,
+                userName,
                 request.planId(),
                 request.metadata()
         );
@@ -117,6 +126,7 @@ public class SubscriptionController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('SCOPE_subscriptions:write')")
     public ResponseEntity<SubscriptionResponse> updateSubscription(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateSubscriptionRequest request,
@@ -138,6 +148,7 @@ public class SubscriptionController {
     }
 
     @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('SCOPE_subscriptions:write')")
     public ResponseEntity<SubscriptionResponse> cancelSubscription(
             @PathVariable UUID id,
             @Valid @RequestBody CancelSubscriptionRequest request,
@@ -152,6 +163,7 @@ public class SubscriptionController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('SCOPE_subscriptions:write')")
     public ResponseEntity<SubscriptionResponse> deleteSubscription(
             @PathVariable UUID id,
             @RequestParam(required = false) String reason,

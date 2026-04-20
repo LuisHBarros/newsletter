@@ -22,9 +22,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/**").authenticated()
-                .requestMatchers(HttpMethod.POST, "/api/v1/**").hasAuthority("SCOPE_subscriptions:write")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/**").hasAuthority("SCOPE_subscriptions:write")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/**").hasAuthority("SCOPE_subscriptions:write")
+                .requestMatchers(HttpMethod.POST, "/api/v1/**").authenticated()
+                .requestMatchers(HttpMethod.PUT, "/api/v1/**").authenticated()
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/**").authenticated()
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}));

@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -24,6 +25,7 @@ public class PlanController {
     private final PlanService planService;
 
     @PostMapping
+    @PreAuthorize("hasAuthority('SCOPE_subscriptions:admin')")
     public ResponseEntity<PlanResponse> createPlan(@Valid @RequestBody CreatePlanRequest request) {
         Plan plan = planService.createPlan(
                 request.name(),
@@ -59,6 +61,7 @@ public class PlanController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('SCOPE_subscriptions:admin')")
     public ResponseEntity<PlanResponse> updatePlan(
             @PathVariable UUID id,
             @Valid @RequestBody UpdatePlanRequest request) {
@@ -77,6 +80,7 @@ public class PlanController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('SCOPE_subscriptions:admin')")
     public ResponseEntity<Void> deletePlan(@PathVariable UUID id) {
         planService.deletePlan(id);
         return ResponseEntity.noContent().build();

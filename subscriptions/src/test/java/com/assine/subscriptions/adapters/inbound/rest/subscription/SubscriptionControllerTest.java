@@ -70,11 +70,13 @@ class SubscriptionControllerTest {
                 .updatedAt(Instant.now())
                 .build();
 
-        when(subscriptionService.createSubscription(any(), any(), any()))
+        when(subscriptionService.createSubscription(any(), any(), any(), any(), any()))
                 .thenReturn(subscription);
 
         CreateSubscriptionRequest request = new CreateSubscriptionRequest(
                 userId,
+                "user@example.com",
+                "Test User",
                 planId,
                 Map.of()
         );

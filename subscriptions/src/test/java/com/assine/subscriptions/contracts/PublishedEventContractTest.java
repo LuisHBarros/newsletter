@@ -76,7 +76,7 @@ class PublishedEventContractTest {
         when(subscriptionRepository.existsByUserIdAndPlanId(userId, plan.getId())).thenReturn(false);
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(i -> i.getArgument(0));
 
-        subscriptionService.createSubscription(userId, plan.getId(), Map.of());
+        subscriptionService.createSubscription(userId, "user@example.com", "Test User", plan.getId(), new java.util.HashMap<>());
 
         Map<String, Object> payload = capturePayload("subscription.requested");
         assertValid("subscription.requested.v1.json", payload);

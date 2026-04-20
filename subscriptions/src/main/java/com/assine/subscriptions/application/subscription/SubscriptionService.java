@@ -37,7 +37,7 @@ public class SubscriptionService {
     }
 
     @Transactional
-    public Subscription createSubscription(UUID userId, UUID planId, Map<String, Object> metadata) {
+    public Subscription createSubscription(UUID userId, String userEmail, String userName, UUID planId, Map<String, Object> metadata) {
         Plan plan = planRepository.findById(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Plan not found with id: " + planId));
 
@@ -70,10 +70,15 @@ public class SubscriptionService {
         planSnapshot.put("currency", plan.getCurrency());
         planSnapshot.put("billingInterval", plan.getBillingInterval().toString());
         planSnapshot.put("trialDays", plan.getTrialDays());
+        planSnapshot.put("stripePriceId", plan.getStripePriceId());
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("subscriptionId", savedSubscription.getId().toString());
         payload.put("userId", savedSubscription.getUserId().toString());
+        payload.put("userEmail", userEmail != null ? userEmail : "");
+        if (userName != null && !userName.isBlank()) {
+            payload.put("userName", userName);
+        }
         payload.put("planId", plan.getId().toString());
         payload.put("status", savedSubscription.getStatus().toString());
         payload.put("planSnapshot", planSnapshot);
