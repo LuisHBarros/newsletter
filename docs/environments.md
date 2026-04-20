@@ -110,6 +110,29 @@ SPRING_PROFILES_ACTIVE=local ./mvnw spring-boot:run
 
 ## Deploy em Produção (AWS)
 
+### Secrets obrigatórios no AWS Secrets Manager
+
+Antes do primeiro deploy, cadastre manualmente no AWS Console (ou via CLI) os seguintes secrets:
+
+| Secret | Serviço | Formato | Onde obter |
+|--------|---------|---------|------------|
+| `assine/content/rds` | content | `{"username":"...","password":"...","host":"...","port":5432,"dbname":"..."}` | Criado automaticamente pelo Terraform RDS |
+| `assine/content/notion-api-token` | content | `{"token":"secret_..."}` | [Notion Integrations](https://www.notion.so/my-integrations) |
+| `assine/content/notion-webhook-secret` | content | `{"secret":"..."}` | String aleatória que você define |
+| `assine/billing/rds` | billing | `{"username":"...","password":"...","host":"...","port":5432,"dbname":"..."}` | Criado automaticamente pelo Terraform RDS |
+| `assine/billing/stripe` | billing | `{"api_key":"sk_live_...","webhook_secret":"whsec_..."}` | [Stripe Dashboard](https://dashboard.stripe.com/apikeys) |
+| `assine/subscriptions/rds` | subscriptions | `{"username":"...","password":"...","host":"...","port":5432,"dbname":"..."}` | Criado automaticamente pelo Terraform RDS |
+
+**Importante**: Após criar o secret, atualize o valor diretamente no Console AWS (clique no secret → "Retrieve secret value" → "Edit").
+
+### SSM Parameter Store
+
+| Parâmetro | Serviço | Descrição |
+|-----------|---------|-----------|
+| `/newsletter/subscriptions-api-key` | notifications | API key para autenticação m2m com o serviço `subscriptions` |
+
+### Build e Deploy
+
 - **Build**: `docker build -t assine/subscriptions:latest .` (ver `subscriptions/Dockerfile`).
 - **Registry**: push para ECR.
 - **Runtime**: ECS Fargate Task com `SPRING_PROFILES_ACTIVE=prod` e variáveis vindas do Secrets Manager / Parameter Store.

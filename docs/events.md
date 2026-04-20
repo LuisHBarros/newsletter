@@ -61,18 +61,23 @@ Consumidos por `billing` (intents) e por `access` / `notifications` (state chang
   "payload": {
     "subscriptionId": "c5f8e4a1-2b3c-4d5e-6f7a-8b9c0d1e2f3a",
     "userId": "8a1b2c3d-4e5f-6789-0abc-def012345678",
+    "userEmail": "customer@example.com",
+    "userName": "João Silva",
     "planId": "11111111-2222-3333-4444-555555555555",
     "status": "PENDING_PAYMENT",
     "planSnapshot": {
       "price": 29.90,
       "currency": "BRL",
       "billingInterval": "MONTHLY",
-      "trialDays": 0
+      "trialDays": 0,
+      "stripePriceId": "price_1P..."
     },
     "metadata": {}
   }
 }
 ```
+
+> **Nota**: A partir da v1, `userEmail` é obrigatório e `stripePriceId` deve estar presente no plano para cobrança via Stripe Subscription.
 
 ### Exemplo — `subscription.activated`
 
@@ -119,6 +124,8 @@ Publicados por `billing` e roteados em `EventRouter` para transições no domín
 | `billing.payment.succeeded` | renova `currentPeriodStart/End` |
 | `billing.payment.failed` | → `PAST_DUE` |
 | `billing.subscription.canceled` | → `CANCELED` (seta `canceledAt`) |
+
+> **Mudança na v1**: O evento `billing.invoice.receipt_needed` foi removido. O Stripe agora envia recibos nativamente por email.
 
 ### Exemplo — `billing.subscription.activated`
 

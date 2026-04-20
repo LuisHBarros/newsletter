@@ -1,0 +1,1431 @@
+openapi: "3.0.3"
+
+info:
+  title: Assine Newsletter API
+  description: |
+    Unified API for the Assine newsletter platform.
+    Routes to ECS services (billing, content, subscriptions) via VPC Link
+    and Lambda functions (access) via direct integration.
+  version: "1.0.0"
+  contact:
+    name: Assine Platform
+
+servers:
+  - url: https://${api_gateway_id}.execute-api.${aws_region}.amazonaws.com/${env_suffix}
+    description: API Gateway endpoint
+
+tags:
+  - name: Subscriptions
+    description: Subscription management
+  - name: Plans
+    description: Plan management
+  - name: Billing
+    description: Payment and billing
+  - name: Content
+    description: Newsletter content management
+  - name: Access
+    description: Content permission management
+  - name: Webhooks
+    description: External webhook receivers
+
+x-amazon-apigateway-request-validators:
+  all:
+    validateRequestBody: true
+    validateRequestParameters: true
+  params-only:
+    validateRequestBody: false
+    validateRequestParameters: true
+
+paths:
+  /subscriptions:
+    post:
+      tags: [Subscriptions]
+      operationId: createSubscription
+      summary: Create a subscription
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:write"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubscriptionRequest"
+      responses:
+        "201":
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    get:
+      tags: [Subscriptions]
+      operationId: listSubscriptions
+      summary: List subscriptions
+      security:
+        - CognitoAuthorizer: []
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: planId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponseSubscription"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /subscriptions/{id}:
+    get:
+      tags: [Subscriptions]
+      operationId: getSubscription
+      summary: Get a subscription by ID
+      security:
+        - CognitoAuthorizer: []
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+      responses:
+        "200":
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    put:
+      tags: [Subscriptions]
+      operationId: updateSubscription
+      summary: Update a subscription
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:write"
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSubscriptionRequest"
+      responses:
+        "200":
+          description: Updated subscription
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    delete:
+      tags: [Subscriptions]
+      operationId: deleteSubscription
+      summary: Delete a subscription
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:write"
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+        - name: reason
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted subscription
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /subscriptions/{id}/cancel:
+    post:
+      tags: [Subscriptions]
+      operationId: cancelSubscription
+      summary: Cancel a subscription
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:write"
+      parameters:
+        - $ref: "#/components/parameters/SubscriptionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelSubscriptionRequest"
+      responses:
+        "200":
+          description: Cancelled subscription
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /plans:
+    get:
+      tags: [Plans]
+      operationId: listPlans
+      summary: List plans
+      security:
+        - CognitoAuthorizer: []
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponsePlan"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    post:
+      tags: [Plans]
+      operationId: createPlan
+      summary: Create a plan
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:admin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanRequest"
+      responses:
+        "201":
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /plans/{id}:
+    get:
+      tags: [Plans]
+      operationId: getPlan
+      summary: Get a plan by ID
+      security:
+        - CognitoAuthorizer: []
+      parameters:
+        - $ref: "#/components/parameters/PlanId"
+      responses:
+        "200":
+          description: Plan details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    put:
+      tags: [Plans]
+      operationId: updatePlan
+      summary: Update a plan
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:admin"
+      parameters:
+        - $ref: "#/components/parameters/PlanId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlanRequest"
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    delete:
+      tags: [Plans]
+      operationId: deletePlan
+      summary: Delete a plan
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:admin"
+      parameters:
+        - $ref: "#/components/parameters/PlanId"
+      responses:
+        "204":
+          description: Plan deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /payments:
+    get:
+      tags: [Billing]
+      operationId: listPayments
+      summary: List payments
+      security:
+        - CognitoAuthorizer: []
+      parameters:
+        - name: customerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: subscriptionId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of payments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageResponsePayment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /payments/{id}:
+    get:
+      tags: [Billing]
+      operationId: getPayment
+      summary: Get a payment by ID
+      security:
+        - CognitoAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      operationId: stripeWebhook
+      summary: Receive Stripe webhook events
+      description: HMAC signature verified by the billing service
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Event processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy-no-auth"
+
+  /webhooks/notion:
+    post:
+      tags: [Webhooks]
+      operationId: notionWebhook
+      summary: Receive Notion webhook events
+      description: HMAC signature verified by the content service
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Event accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy-no-auth"
+
+  /newsletters:
+    get:
+      tags: [Content]
+      operationId: listNewsletters
+      summary: List published newsletters
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:read"
+      responses:
+        "200":
+          description: List of newsletters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicNewsletter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /newsletters/{slug}:
+    get:
+      tags: [Content]
+      operationId: getNewsletter
+      summary: Get newsletter by slug
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:read"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Newsletter details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicNewsletter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /newsletters/{slug}/issues:
+    get:
+      tags: [Content]
+      operationId: listNewsletterIssues
+      summary: List issues for a newsletter
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:read"
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of issues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssueSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /admin/newsletters:
+    get:
+      tags: [Content]
+      operationId: adminListNewsletters
+      summary: List all newsletters (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      responses:
+        "200":
+          description: List of newsletters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NewsletterResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    post:
+      tags: [Content]
+      operationId: adminCreateNewsletter
+      summary: Create a newsletter (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNewsletterRequest"
+      responses:
+        "201":
+          description: Newsletter created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsletterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /admin/newsletters/{id}:
+    get:
+      tags: [Content]
+      operationId: adminGetNewsletter
+      summary: Get newsletter by ID (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Newsletter details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsletterResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+    delete:
+      tags: [Content]
+      operationId: adminArchiveNewsletter
+      summary: Archive a newsletter (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Newsletter archived
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /admin/newsletters/{id}/plans:
+    put:
+      tags: [Content]
+      operationId: adminUpdateNewsletterPlans
+      summary: Update newsletter plans (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlansRequest"
+      responses:
+        "200":
+          description: Updated newsletter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewsletterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /admin/issues:
+    get:
+      tags: [Content]
+      operationId: adminListIssues
+      summary: List issues by newsletter (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      parameters:
+        - name: newsletterId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of issues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssueSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /admin/issues/import:
+    post:
+      tags: [Content]
+      operationId: adminImportIssue
+      summary: Import issue from Notion (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportRequest"
+      responses:
+        "200":
+          description: Imported issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /admin/issues/{id}:
+    get:
+      tags: [Content]
+      operationId: adminGetIssue
+      summary: Get issue by ID (admin)
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Issue details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /internal/jobs/expire-subscriptions:
+    post:
+      tags: [Internal]
+      operationId: expireSubscriptions
+      summary: Expire overdue subscriptions
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/subscriptions:admin"
+      responses:
+        "200":
+          description: Expiration result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expired:
+                    type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /internal/jobs/publish-scheduled:
+    post:
+      tags: [Internal]
+      operationId: publishScheduled
+      summary: Publish scheduled content
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      responses:
+        "200":
+          description: Publish result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  published:
+                    type: integer
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /internal/jobs/reconcile-notion:
+    post:
+      tags: [Internal]
+      operationId: reconcileNotion
+      summary: Reconcile Notion pages
+      security:
+        - CognitoAuthorizer:
+            - "assine-api/content:admin"
+      responses:
+        "200":
+          description: Reconcile result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enqueued:
+                    type: integer
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+  /access:
+    post:
+      tags: [Access]
+      operationId: accessAction
+      summary: Manage content permissions
+      description: |
+        Performs access control actions:
+        - `grant` - Grant access to content
+        - `revoke` - Revoke access to content
+        - `check` - Check if user has access
+        - `list` - List user permissions
+      security:
+        - CognitoAuthorizer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequest"
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${access_function_invoke_arn}
+        credentials: ${api_gateway_role_arn}
+        passthroughBehavior: "when_no_match"
+        payloadFormatVersion: "1.0"
+
+  /{proxy+}:
+    x-amazon-apigateway-any-method:
+      summary: Catch-all proxy to ALB
+      security:
+        - CognitoAuthorizer: []
+      parameters:
+        - name: proxy
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Proxied response
+      x-amazon-apigateway-integration:
+        $ref: "#/components/x-amazon-apigateway-integrations/vpc-link-proxy"
+
+components:
+  securitySchemes:
+    CognitoAuthorizer:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: cognito_user_pools
+      x-amazon-apigateway-authorizer:
+        type: cognito_user_pools
+        providerARNs:
+          - ${cognito_user_pool_arn}
+
+  parameters:
+    SubscriptionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PlanId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+
+    CreateSubscriptionRequest:
+      type: object
+      required: [userId, userEmail, planId]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        userEmail:
+          type: string
+          format: email
+        userName:
+          type: string
+        planId:
+          type: string
+          format: uuid
+        metadata:
+          type: object
+          additionalProperties: true
+
+    UpdateSubscriptionRequest:
+      type: object
+      properties:
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        cancelAtPeriodEnd:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties: true
+
+    CancelSubscriptionRequest:
+      type: object
+      required: [cancelAtPeriodEnd]
+      properties:
+        cancelAtPeriodEnd:
+          type: boolean
+        reason:
+          type: string
+
+    SubscriptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        planId:
+          type: string
+          format: uuid
+        planName:
+          type: string
+        status:
+          type: string
+        currentPeriodStart:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        cancelAtPeriodEnd:
+          type: boolean
+        canceledAt:
+          type: string
+          format: date-time
+        trialStart:
+          type: string
+          format: date-time
+        trialEnd:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePlanRequest:
+      type: object
+      required: [name, price, currency, billingInterval]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        billingInterval:
+          type: string
+          enum: [MONTHLY, YEARLY, WEEKLY]
+        trialDays:
+          type: integer
+        features:
+          type: object
+          additionalProperties: true
+
+    UpdatePlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        billingInterval:
+          type: string
+          enum: [MONTHLY, YEARLY, WEEKLY]
+        trialDays:
+          type: integer
+        features:
+          type: object
+          additionalProperties: true
+        active:
+          type: boolean
+
+    PlanResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        currency:
+          type: string
+        billingInterval:
+          type: string
+        trialDays:
+          type: integer
+        features:
+          type: object
+          additionalProperties: true
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PaymentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        subscriptionId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        currency:
+          type: string
+        status:
+          type: string
+        provider:
+          type: string
+        providerPaymentRef:
+          type: string
+        failureReason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PublicNewsletter:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        planIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    NewsletterResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        notionDatabaseId:
+          type: string
+        defaultFromEmail:
+          type: string
+        planIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateNewsletterRequest:
+      type: object
+      required: [slug, name, notionDatabaseId, planIds]
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{1,78}[a-z0-9]$"
+        name:
+          type: string
+        description:
+          type: string
+        notionDatabaseId:
+          type: string
+        defaultFromEmail:
+          type: string
+        planIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+
+    UpdatePlansRequest:
+      type: object
+      required: [planIds]
+      properties:
+        planIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+
+    IssueSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        newsletterId:
+          type: string
+          format: uuid
+        notionPageId:
+          type: string
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        publishedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+        htmlS3Key:
+          type: string
+
+    ImportRequest:
+      type: object
+      required: [notionPageId]
+      properties:
+        notionPageId:
+          type: string
+
+    AccessRequest:
+      type: object
+      required: [action, userId]
+      properties:
+        action:
+          type: string
+          enum: [grant, revoke, check, list]
+        userId:
+          type: string
+        contentId:
+          type: string
+        planId:
+          type: string
+        duration:
+          type: string
+          description: "Duration string (e.g. '30d', '365d', 'forever')"
+
+    AccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        hasAccess:
+          type: boolean
+        permission:
+          type: object
+          properties:
+            userId:
+              type: string
+            contentId:
+              type: string
+            planId:
+              type: string
+            expiresAt:
+              type: string
+              format: date-time
+        permissions:
+          type: array
+          items:
+            type: object
+            properties:
+              userId:
+                type: string
+              contentId:
+                type: string
+              planId:
+                type: string
+              expiresAt:
+                type: string
+                format: date-time
+        error:
+          type: string
+
+    PageResponseSubscription:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+
+    PageResponsePlan:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+
+    PageResponsePayment:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentResponse"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+
+  x-amazon-apigateway-integrations:
+    vpc-link-proxy:
+      type: http_proxy
+      httpMethod: ANY
+      uri: "http://${nlb_dns}:{proxy}"
+      connectionId: ${vpc_link_id}
+      connectionType: VPC_LINK
+      passthroughBehavior: "when_no_match"
+
+    vpc-link-proxy-no-auth:
+      type: http_proxy
+      httpMethod: ANY
+      uri: "http://${nlb_dns}:{proxy}"
+      connectionId: ${vpc_link_id}
+      connectionType: VPC_LINK
+      passthroughBehavior: "when_no_match"
