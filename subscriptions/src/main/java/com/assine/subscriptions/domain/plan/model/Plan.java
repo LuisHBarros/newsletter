@@ -59,6 +59,9 @@ public class Plan {
     @Builder.Default
     private Instant updatedAt = Instant.now();
 
+    @Column(name = "stripe_price_id")
+    private String stripePriceId;
+
     @Version
     @Column(name = "version")
     @Builder.Default
