@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Newsletter Access Service - Lambda + DynamoDB
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  LogLevel:
+    Type: String
+    Default: info
+    AllowedValues: [debug, info, warn, error]
+  ContentServiceURL:
+    Type: String
+    Description: URL for content service API
+    Default: ''
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: provided.al2
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        LOG_LEVEL: !Ref LogLevel
+        PERMISSIONS_TABLE: !Ref PermissionsTable
+        CONTENT_SERVICE_URL: !Ref ContentServiceURL
+
+Resources:
+  PermissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "content-permissions-${Environment}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: contentId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: contentId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  AccessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "newsletter-access-${Environment}"
+      Handler: bootstrap
+      CodeUri: ./
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:DeleteItem
+                - dynamodb:Query
+              Resource: !GetAtt PermissionsTable.Arn
+            - Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+              Resource: '*'
+      Tracing: Active
+
+Outputs:
+  FunctionARN:
+    Description: ARN of the access Lambda function
+    Value: !GetAtt AccessFunction.Arn
+  FunctionName:
+    Description: Name of the access Lambda function
+    Value: !Ref AccessFunction
+  FunctionInvokeARN:
+    Description: Invoke ARN of the access Lambda function
+    Value: !GetAtt AccessFunction.Arn
+  DynamoDBTableName:
+    Description: Name of the permissions table
+    Value: !Ref PermissionsTable
+  DynamoDBTableArn:
+    Description: ARN of the permissions table
+    Value: !GetAtt PermissionsTable.Arn
