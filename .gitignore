@@ -1,3 +1,5 @@
 /.opencode
 /.windsurf
 /.vscode
+*.zip
+/infra/terraform/modules/rds/files/python/

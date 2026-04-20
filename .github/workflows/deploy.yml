@@ -1,0 +1,271 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      billing: ${{ steps.filter.outputs.billing }}
+      content: ${{ steps.filter.outputs.content }}
+      subscriptions: ${{ steps.filter.outputs.subscriptions }}
+      notifications: ${{ steps.filter.outputs.notifications }}
+      access: ${{ steps.filter.outputs.access }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            billing:
+              - 'billing/**'
+            content:
+              - 'content/**'
+            subscriptions:
+              - 'subscriptions/**'
+            notifications:
+              - 'notifications/**'
+            access:
+              - 'access/**'
+            infra:
+              - 'infra/**'
+              - 'docs/api/**'
+
+  # Fase 1 do apply: cria apenas os recursos de base que precisam existir
+  # ANTES do build/push das imagens (ECR, VPC, IAM, RDS, SQS, Cognito).
+  # Em pushes subsequentes sem mudanca em infra/** este job eh pulado.
+  # Em pushes com mudanca em infra/** o apply -target eh idempotente (no-op
+  # se nada mudou nesses modulos) e o deploy-infra final aplica o resto.
+  infra-bootstrap:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    if: |
+      needs.detect-changes.outputs.infra == 'true' &&
+      github.event_name == 'push'
+    env:
+      TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
+      TF_VAR_ses_sender_identity_arn: ${{ secrets.SES_SENDER_IDENTITY_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.5"
+
+      - name: Terraform Init
+        working-directory: infra/terraform/envs/prod
+        run: terraform init -input=false
+
+      - name: Terraform Apply (bootstrap targets)
+        working-directory: infra/terraform/envs/prod
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var-file=prod.tfvars \
+            -target=module.ecr \
+            -target=module.vpc \
+            -target=module.security_groups \
+            -target=module.iam \
+            -target=module.rds \
+            -target=module.sqs \
+            -target=module.cognito
+
+  build-java:
+    needs: [detect-changes, infra-bootstrap]
+    if: |
+      always() &&
+      (needs.infra-bootstrap.result == 'success' || needs.infra-bootstrap.result == 'skipped')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [billing, content, subscriptions]
+    # Roda sempre que houve mudanca no servico (para tests de PR) OU quando
+    # o infra-bootstrap acabou de rodar (primeiro push com infra nova, precisa
+    # publicar :latest para o deploy-infra conseguir criar ECS services).
+    # A guarda por-servico esta em step.changed.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if this service changed
+        id: changed
+        run: |
+          CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          if [ "$CHANGED" != "true" ]; then
+            echo "Skipping ${{ matrix.service }} - no changes detected"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.changed.outputs.changed == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Run tests
+        if: steps.changed.outputs.changed == 'true'
+        run: mvn -pl ${{ matrix.service }} -am test
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push Docker image
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG \
+            -t $ECR_REGISTRY/assine/${{ matrix.service }}:latest \
+            -f ${{ matrix.service }}/Dockerfile .
+          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:latest
+
+      - name: Deploy to ECS
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          aws ecs update-service \
+            --cluster assine-prod \
+            --service assine-${{ matrix.service }}-prod \
+            --force-new-deployment
+          aws ecs wait services-stable \
+            --cluster assine-prod \
+            --services assine-${{ matrix.service }}-prod
+
+  build-lambda-go:
+    needs: [detect-changes, infra-bootstrap]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [notifications, access]
+    if: |
+      always() &&
+      (needs.infra-bootstrap.result == 'success' || needs.infra-bootstrap.result == 'skipped') &&
+      (needs.detect-changes.outputs.notifications == 'true' ||
+       needs.detect-changes.outputs.access == 'true')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if this service changed
+        id: changed
+        run: |
+          CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-go@v5
+        if: steps.changed.outputs.changed == 'true'
+        with:
+          go-version: '1.22'
+
+      - name: Run tests
+        if: steps.changed.outputs.changed == 'true'
+        working-directory: ${{ matrix.service }}
+        run: go test ./...
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push Lambda container image
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        working-directory: ${{ matrix.service }}
+        run: |
+          GOOS=linux GOARCH=arm64 go build -o bootstrap .
+          docker build -t $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG \
+            -t $ECR_REGISTRY/assine/${{ matrix.service }}:latest .
+          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG
+          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:latest
+
+      - name: Update Lambda function
+        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          aws lambda update-function-code \
+            --function-name assine-${{ matrix.service }}-prod \
+            --image-uri $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG
+
+  # Fase 2 do apply: recursos que dependem das imagens ja existirem no ECR
+  # (ECS services, Lambdas, ALB listener rules, API Gateway, monitoring).
+  # Eh um apply completo idempotente; em pushes sem mudanca em infra/** pula.
+  deploy-infra:
+    needs: [detect-changes, infra-bootstrap, build-java, build-lambda-go]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      needs.detect-changes.outputs.infra == 'true' &&
+      github.event_name == 'push' &&
+      needs.infra-bootstrap.result == 'success' &&
+      (needs.build-java.result == 'success' || needs.build-java.result == 'skipped') &&
+      (needs.build-lambda-go.result == 'success' || needs.build-lambda-go.result == 'skipped')
+    env:
+      TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
+      TF_VAR_ses_sender_identity_arn: ${{ secrets.SES_SENDER_IDENTITY_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.5"
+
+      - name: Terraform Init
+        working-directory: infra/terraform/envs/prod
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        working-directory: infra/terraform/envs/prod
+        run: terraform plan -input=false -var-file=prod.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infra/terraform/envs/prod
+        run: terraform apply -input=false -auto-approve tfplan
