@@ -69,3 +69,6 @@ logging:
   level:
     root: WARN
     com.assine.content: INFO
+  structured:
+    format:
+      json: json

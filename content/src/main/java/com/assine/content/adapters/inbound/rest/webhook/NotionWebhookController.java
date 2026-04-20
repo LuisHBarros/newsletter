@@ -36,12 +36,11 @@ public class NotionWebhookController {
                 request.getHeader("X-Notion-Signature"),
                 request.getHeader("Notion-Signature")
         );
-        boolean valid = HmacSignatureVerifier.verify(
-                notionProperties.getWebhookSecret(), body, header);
 
-        Map<String, Object> payload = body.length == 0
-                ? Map.of()
-                : objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+        if (!HmacSignatureVerifier.verify(notionProperties.getWebhookSecret(), body, header)) {
+            log.warn("Notion webhook rejected: invalid HMAC signature");
+            return ResponseEntity.status(401).body(Map.of("status", "invalid"));
+        }
 
         String deliveryId = firstNonBlank(
                 request.getHeader("X-Notion-Delivery-Id"),
@@ -49,7 +48,11 @@ public class NotionWebhookController {
                 request.getHeader("X-Request-Id")
         );
 
-        NotionWebhookService.Outcome outcome = webhookService.handle(deliveryId, valid, payload);
+        Map<String, Object> payload = body.length == 0
+                ? Map.of()
+                : objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+
+        NotionWebhookService.Outcome outcome = webhookService.handle(deliveryId, payload);
 
         return switch (outcome) {
             case ACCEPTED -> ResponseEntity.accepted().body(Map.of("status", "accepted"));

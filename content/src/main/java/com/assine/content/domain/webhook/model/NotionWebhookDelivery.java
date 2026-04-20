@@ -26,8 +26,12 @@ public class NotionWebhookDelivery {
     @Column(name = "delivery_id", nullable = false, unique = true, length = 128)
     private String deliveryId;
 
+    // Always true by invariant: NotionWebhookController rejects invalid signatures
+    // before calling NotionWebhookService. Column retained for historical auditing
+    // and schema compatibility (V4 migration). A future migration may drop it.
     @Column(name = "signature_valid", nullable = false)
-    private Boolean signatureValid;
+    @Builder.Default
+    private Boolean signatureValid = true;
 
     @Convert(converter = JsonMapConverter.class)
     @Column(name = "payload", nullable = false, columnDefinition = "TEXT")

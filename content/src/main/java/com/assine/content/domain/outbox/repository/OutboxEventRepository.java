@@ -19,4 +19,5 @@ public interface OutboxEventRepository {
     void markAsFailed(UUID id, String error);
     void scheduleRetry(UUID id, Instant nextAttemptAt, String error);
     void delete(UUID id);
+    long countByStatus(OutboxEventStatus status);
 }

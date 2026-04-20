@@ -28,19 +28,7 @@ public class NotionWebhookService {
     public enum Outcome { ACCEPTED, DUPLICATE, INVALID }
 
     @Transactional
-    public Outcome handle(String deliveryId, boolean signatureValid, Map<String, Object> payload) {
-        if (!signatureValid) {
-            deliveryRepository.save(NotionWebhookDelivery.builder()
-                    .id(UUID.randomUUID())
-                    .deliveryId(deliveryId != null ? deliveryId : UUID.randomUUID().toString())
-                    .signatureValid(false)
-                    .payload(payload != null ? payload : Map.of())
-                    .status(NotionWebhookDelivery.Status.REJECTED)
-                    .error("Invalid HMAC signature")
-                    .build());
-            return Outcome.INVALID;
-        }
-
+    public Outcome handle(String deliveryId, Map<String, Object> payload) {
         String effectiveDeliveryId = deliveryId != null && !deliveryId.isBlank()
                 ? deliveryId
                 : UUID.randomUUID().toString();
@@ -53,7 +41,6 @@ public class NotionWebhookService {
         NotionWebhookDelivery delivery = deliveryRepository.save(NotionWebhookDelivery.builder()
                 .id(UUID.randomUUID())
                 .deliveryId(effectiveDeliveryId)
-                .signatureValid(true)
                 .payload(payload != null ? payload : Map.of())
                 .status(NotionWebhookDelivery.Status.RECEIVED)
                 .build());

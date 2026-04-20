@@ -33,26 +33,11 @@ class NotionWebhookServiceTest {
     );
 
     @Test
-    void invalidSignatureRecordsRejectedDeliveryAndReturnsInvalid() {
-        when(deliveryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        NotionWebhookService.Outcome outcome = service.handle("d-1", false, validPayload);
-
-        assertThat(outcome).isEqualTo(NotionWebhookService.Outcome.INVALID);
-        ArgumentCaptor<NotionWebhookDelivery> captor =
-                ArgumentCaptor.forClass(NotionWebhookDelivery.class);
-        verify(deliveryRepository).save(captor.capture());
-        assertThat(captor.getValue().getSignatureValid()).isFalse();
-        assertThat(captor.getValue().getStatus()).isEqualTo(NotionWebhookDelivery.Status.REJECTED);
-        verifyNoInteractions(jobsPublisher);
-    }
-
-    @Test
     void duplicateDeliveryIdShortCircuitsWithoutEnqueue() {
         when(deliveryRepository.findByDeliveryId("dup-1"))
                 .thenReturn(Optional.of(NotionWebhookDelivery.builder().build()));
 
-        NotionWebhookService.Outcome outcome = service.handle("dup-1", true, validPayload);
+        NotionWebhookService.Outcome outcome = service.handle("dup-1", validPayload);
 
         assertThat(outcome).isEqualTo(NotionWebhookService.Outcome.DUPLICATE);
         verify(deliveryRepository, never()).save(any());
@@ -67,7 +52,7 @@ class NotionWebhookServiceTest {
             return d; // identity; markProcessed will be stubbed by default (void)
         });
 
-        NotionWebhookService.Outcome outcome = service.handle("d-2", true, validPayload);
+        NotionWebhookService.Outcome outcome = service.handle("d-2", validPayload);
 
         assertThat(outcome).isEqualTo(NotionWebhookService.Outcome.ACCEPTED);
         ArgumentCaptor<ImportIssueJob> job = ArgumentCaptor.forClass(ImportIssueJob.class);
@@ -84,7 +69,7 @@ class NotionWebhookServiceTest {
         when(deliveryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         NotionWebhookService.Outcome outcome =
-                service.handle("d-3", true, Map.of("last_edited_time", "2026-04-17T12:00:00Z"));
+                service.handle("d-3", Map.of("last_edited_time", "2026-04-17T12:00:00Z"));
 
         assertThat(outcome).isEqualTo(NotionWebhookService.Outcome.INVALID);
         verify(deliveryRepository).markProcessed(any(), eq(NotionWebhookDelivery.Status.REJECTED), any());
@@ -101,7 +86,7 @@ class NotionWebhookServiceTest {
                 "last_edited_time", "2026-04-17T12:00:00Z"
         );
 
-        assertThat(service.handle("d-4", true, payload))
+        assertThat(service.handle("d-4", payload))
                 .isEqualTo(NotionWebhookService.Outcome.ACCEPTED);
 
         ArgumentCaptor<ImportIssueJob> job = ArgumentCaptor.forClass(ImportIssueJob.class);
@@ -114,7 +99,7 @@ class NotionWebhookServiceTest {
         when(deliveryRepository.findByDeliveryId(any())).thenReturn(Optional.empty());
         when(deliveryRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        assertThat(service.handle(null, true, validPayload))
+        assertThat(service.handle(null, validPayload))
                 .isEqualTo(NotionWebhookService.Outcome.ACCEPTED);
 
         ArgumentCaptor<NotionWebhookDelivery> captor =
@@ -131,7 +116,7 @@ class NotionWebhookServiceTest {
                 .when(jobsPublisher).enqueueImport(any());
 
         try {
-            service.handle("d-5", true, validPayload);
+            service.handle("d-5", validPayload);
         } catch (RuntimeException expected) {
             assertThat(expected).hasMessage("sqs down");
         }

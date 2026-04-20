@@ -1,8 +1,11 @@
 package com.assine.content.application.outbox;
 
 import com.assine.content.domain.outbox.model.OutboxEvent;
-import com.assine.content.domain.outbox.port.EventPublisher;
+import com.assine.content.domain.outbox.model.OutboxEventStatus;
 import com.assine.content.domain.outbox.repository.OutboxEventRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -10,13 +13,13 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
 /**
- * Polls {@code outbox_events} for PENDING events due for publishing and pushes them
- * to SQS via {@link EventPublisher}. On failure, schedules an exponential-backoff retry.
+ * Polls {@code outbox_events} for PENDING events due for publishing and delegates
+ * publishing to {@link OutboxEventPublisherService} with per-event REQUIRES_NEW transactions.
+ * Uses ShedLock for multi-instance safety.
  */
 @Slf4j
 @Component
@@ -25,10 +28,18 @@ import java.util.List;
 public class OutboxRelay {
 
     private static final int BATCH_SIZE = 50;
-    private static final int MAX_RETRIES = 8;
 
     private final OutboxEventRepository outboxEventRepository;
-    private final EventPublisher eventPublisher;
+    private final OutboxEventPublisherService publisherService;
+    private final MeterRegistry meterRegistry;
+
+    @PostConstruct
+    public void registerMetrics() {
+        meterRegistry.gauge("outbox.pending.count",
+            Tags.of("service", "content"),
+            outboxEventRepository,
+            repo -> repo.countByStatus(OutboxEventStatus.PENDING));
+    }
 
     @Scheduled(cron = "${content.outbox.relay.cron:*/5 * * * * *}")
     @SchedulerLock(name = "content-outbox-relay", lockAtMostFor = "PT1M", lockAtLeastFor = "PT1S")
@@ -38,29 +49,7 @@ public class OutboxRelay {
 
         log.debug("Relaying {} outbox events", due.size());
         for (OutboxEvent e : due) {
-            try {
-                eventPublisher.publish(
-                        e.getEventId().toString(),
-                        e.getEventType(),
-                        e.getAggregateType(),
-                        e.getAggregateId() != null ? e.getAggregateId().toString() : null,
-                        e.getEventPayload());
-                outboxEventRepository.markAsPublished(e.getId());
-            } catch (Exception ex) {
-                log.warn("Failed to publish outbox event {} (retry {}): {}", e.getId(), e.getRetryCount(), ex.getMessage());
-                int retry = e.getRetryCount() != null ? e.getRetryCount() : 0;
-                if (retry >= MAX_RETRIES) {
-                    outboxEventRepository.markAsFailed(e.getId(), ex.getMessage());
-                } else {
-                    Instant nextAttempt = Instant.now().plus(Duration.ofSeconds(backoffSeconds(retry)));
-                    outboxEventRepository.scheduleRetry(e.getId(), nextAttempt, ex.getMessage());
-                }
-            }
+            publisherService.publishWithRetry(e);
         }
-    }
-
-    private long backoffSeconds(int retry) {
-        // 1, 2, 4, 8, 16, 32, 64, 128 seconds
-        return 1L << Math.min(retry, 7);
     }
 }

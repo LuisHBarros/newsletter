@@ -83,6 +83,9 @@ logging:
   level:
     root: WARN
     com.assine.subscriptions: INFO
+  structured:
+    format:
+      json: json
 
 # Disable @Scheduled expiration in prod - use EventBridge Scheduler calling /internal/jobs/expire-subscriptions
 subscriptions:

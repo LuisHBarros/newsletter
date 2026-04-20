@@ -45,6 +45,13 @@ public class NotionClient implements NotionPort {
         } catch (WebClientResponseException.NotFound nf) {
             log.warn("Notion page {} not found", pageId);
             return Optional.empty();
+        } catch (WebClientResponseException e) {
+            if (e.getStatusCode().is4xxClientError()) {
+                log.warn("Notion API client error for page {}: {} {}", pageId, e.getStatusCode(), e.getResponseBodyAsString());
+                return Optional.empty();
+            }
+            log.error("Notion API transient error for page {}: {}", pageId, e.getStatusCode());
+            throw new RuntimeException("Notion fetchPage failed (transient)", e);
         } catch (Exception e) {
             log.error("Failed to fetch Notion page {}", pageId, e);
             throw new RuntimeException("Notion fetchPage failed", e);
@@ -82,6 +89,13 @@ public class NotionClient implements NotionPort {
                 out.add(new NotionPageSummary(pageId, lastEdited));
             }
             return out;
+        } catch (WebClientResponseException e) {
+            if (e.getStatusCode().is4xxClientError()) {
+                log.warn("Notion API client error for database {}: {} {}", databaseId, e.getStatusCode(), e.getResponseBodyAsString());
+                return List.of();
+            }
+            log.error("Notion API transient error for database {}: {}", databaseId, e.getStatusCode());
+            throw new RuntimeException("Notion query failed (transient)", e);
         } catch (Exception e) {
             log.error("Failed to query Notion database {} since {}", databaseId, since, e);
             throw new RuntimeException("Notion query failed", e);
