@@ -13,6 +13,8 @@ import java.util.UUID;
 
 @Repository
 public interface OutboxEventJpaRepository extends JpaRepository<OutboxEvent, UUID> {
+    long countByStatus(OutboxEventStatus status);
+
     List<OutboxEvent> findByStatus(OutboxEventStatus status);
     List<OutboxEvent> findByStatusOrderByCreatedAtAsc(OutboxEventStatus status);
     List<OutboxEvent> findByAggregateTypeAndAggregateId(String aggregateType, UUID aggregateId);

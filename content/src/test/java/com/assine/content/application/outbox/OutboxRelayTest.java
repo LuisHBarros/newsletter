@@ -3,6 +3,7 @@ package com.assine.content.application.outbox;
 import com.assine.content.domain.outbox.model.OutboxEvent;
 import com.assine.content.domain.outbox.model.OutboxEventStatus;
 import com.assine.content.domain.outbox.repository.OutboxEventRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +15,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,23 +28,26 @@ class OutboxRelayTest {
     @Mock
     private OutboxEventPublisherService publisherService;
 
+    @Mock
+    private MeterRegistry meterRegistry;
+
     private OutboxRelay outboxRelay;
 
     @BeforeEach
     void setUp() {
-        outboxRelay = new OutboxRelay(outboxEventRepository, publisherService);
+        outboxRelay = new OutboxRelay(outboxEventRepository, publisherService, meterRegistry);
     }
 
     @Test
     void drain_noPendingEvents_shouldDoNothing() {
         // Given
-        when(outboxEventRepository.findDueForPublishing(50, Instant.now())).thenReturn(Collections.emptyList());
+        when(outboxEventRepository.findDueForPublishing(eq(50), any(Instant.class))).thenReturn(Collections.emptyList());
 
         // When
         outboxRelay.drain();
 
         // Then
-        verify(outboxEventRepository).findDueForPublishing(50, Instant.now());
+        verify(outboxEventRepository).findDueForPublishing(eq(50), any(Instant.class));
         verifyNoInteractions(publisherService);
     }
 
@@ -71,21 +77,21 @@ class OutboxRelayTest {
                 .retryCount(1)
                 .build();
 
-        when(outboxEventRepository.findDueForPublishing(50, Instant.now()))
+        when(outboxEventRepository.findDueForPublishing(eq(50), any(Instant.class)))
                 .thenReturn(List.of(event1, event2));
 
         // When
         outboxRelay.drain();
 
         // Then
-        verify(outboxEventRepository).findDueForPublishing(50, Instant.now());
+        verify(outboxEventRepository).findDueForPublishing(eq(50), any(Instant.class));
         verify(publisherService).publishWithRetry(event1);
         verify(publisherService).publishWithRetry(event2);
         verifyNoMoreInteractions(publisherService);
     }
 
     @Test
-    void drain_publisherServiceThrows_shouldContinueWithNextEvent() {
+    void drain_publisherServiceThrows_propagatesException() {
         // Given
         UUID eventId1 = UUID.randomUUID();
         UUID eventId2 = UUID.randomUUID();
@@ -110,17 +116,21 @@ class OutboxRelayTest {
                 .retryCount(0)
                 .build();
 
-        when(outboxEventRepository.findDueForPublishing(50, Instant.now()))
+        when(outboxEventRepository.findDueForPublishing(eq(50), any(Instant.class)))
                 .thenReturn(List.of(event1, event2));
 
-        // First event throws, second should still be processed
+        // First event throws
         doThrow(new RuntimeException("Publish failed")).when(publisherService).publishWithRetry(event1);
 
-        // When
-        outboxRelay.drain();
+        // When / Then - exception propagates, only first event is attempted
+        var exception = org.junit.jupiter.api.Assertions.assertThrows(
+                RuntimeException.class,
+                () -> outboxRelay.drain()
+        );
 
-        // Then - both events should be attempted
+        assertThat(exception.getMessage()).isEqualTo("Publish failed");
         verify(publisherService).publishWithRetry(event1);
-        verify(publisherService).publishWithRetry(event2);
+        // Second event is never attempted due to exception
+        verify(publisherService, never()).publishWithRetry(event2);
     }
 }

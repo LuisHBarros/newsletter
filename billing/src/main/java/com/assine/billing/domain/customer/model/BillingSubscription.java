@@ -78,4 +78,116 @@ public class BillingSubscription {
     public void preUpdate() {
         this.updatedAt = Instant.now();
     }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public UUID getSubscriptionId() {
+        return subscriptionId;
+    }
+
+    public void setSubscriptionId(UUID subscriptionId) {
+        this.subscriptionId = subscriptionId;
+    }
+
+    public BillingCustomer getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(BillingCustomer customer) {
+        this.customer = customer;
+    }
+
+    public UUID getPlanId() {
+        return planId;
+    }
+
+    public void setPlanId(UUID planId) {
+        this.planId = planId;
+    }
+
+    public BillingSubscriptionStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(BillingSubscriptionStatus status) {
+        this.status = status;
+    }
+
+    public String getProviderSubscriptionRef() {
+        return providerSubscriptionRef;
+    }
+
+    public void setProviderSubscriptionRef(String providerSubscriptionRef) {
+        this.providerSubscriptionRef = providerSubscriptionRef;
+    }
+
+    public Instant getCurrentPeriodStart() {
+        return currentPeriodStart;
+    }
+
+    public void setCurrentPeriodStart(Instant currentPeriodStart) {
+        this.currentPeriodStart = currentPeriodStart;
+    }
+
+    public Instant getCurrentPeriodEnd() {
+        return currentPeriodEnd;
+    }
+
+    public void setCurrentPeriodEnd(Instant currentPeriodEnd) {
+        this.currentPeriodEnd = currentPeriodEnd;
+    }
+
+    public String getBillingInterval() {
+        return billingInterval;
+    }
+
+    public void setBillingInterval(String billingInterval) {
+        this.billingInterval = billingInterval;
+    }
+
+    public Instant getCanceledAt() {
+        return canceledAt;
+    }
+
+    public void setCanceledAt(Instant canceledAt) {
+        this.canceledAt = canceledAt;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Integer getVersion() {
+        return version;
+    }
+
+    public void setVersion(Integer version) {
+        this.version = version;
+    }
 }

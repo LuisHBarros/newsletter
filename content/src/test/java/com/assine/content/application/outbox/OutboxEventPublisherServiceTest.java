@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -147,31 +148,14 @@ class OutboxEventPublisherServiceTest {
     @Test
     void calculateBackoff_shouldCapAtMaxDelay() {
         // Given retry count high enough to exceed MAX_DELAY
-        // BASE_DELAY=30s, so at retryCount=5: 30*2^5 = 960s = 16min > MAX_DELAY=10min
+        // BASE_DELAY=30s, so at retryCount=10: 30*2^10 = 30720s = 512min > MAX_DELAY=10min
         // This should be capped at 10 minutes
 
-        UUID eventId = UUID.randomUUID();
-        OutboxEvent event = OutboxEvent.builder()
-                .id(eventId)
-                .eventId(UUID.randomUUID())
-                .eventType("test.event")
-                .aggregateType("Test")
-                .aggregateId(UUID.randomUUID())
-                .status(OutboxEventStatus.PENDING)
-                .retryCount(4) // Will become 5 after increment
-                .build();
+        // When - call private method via reflection
+        Duration backoff = (Duration) ReflectionTestUtils.invokeMethod(
+                service, "calculateBackoff", 10);
 
-        doThrow(new RuntimeException("Fail")).when(resilientEventPublisher).publish(event);
-
-        // When
-        service.publishWithRetry(event);
-
-        // Then
-        ArgumentCaptor<Instant> nextAttemptCaptor = ArgumentCaptor.forClass(Instant.class);
-        verify(outboxEventRepository).scheduleRetry(eq(eventId), nextAttemptCaptor.capture(), any());
-
-        Duration backoff = Duration.between(Instant.now(), nextAttemptCaptor.getValue());
-        // Should be capped at MAX_DELAY (10 minutes)
-        assertThat(backoff).isLessThanOrEqualTo(Duration.ofMinutes(11));
+        // Then - should be capped at MAX_DELAY (10 minutes)
+        assertThat(backoff).isEqualTo(Duration.ofMinutes(10));
     }
 }

@@ -73,4 +73,9 @@ public class OutboxEventRepositoryImpl implements OutboxEventRepository {
     public void delete(UUID id) {
         jpa.deleteById(id);
     }
+
+    @Override
+    public long countByStatus(OutboxEventStatus status) {
+        return jpa.countByStatus(status);
+    }
 }

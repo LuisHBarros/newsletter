@@ -48,7 +48,7 @@ public class SqsEventPublisher implements EventPublisher {
                 "eventId", eventId,
                 "schemaVersion", SCHEMA_VERSION,
                 "occurredAt", Instant.now().toString(),
-                "eventType", eventType,
+                "eventType", eventType != null ? eventType : "",
                 "aggregateType", aggregateType != null ? aggregateType : "",
                 "aggregateId", aggregateId != null ? aggregateId : "",
                 "payload", payload

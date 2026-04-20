@@ -48,6 +48,7 @@ class BillingSubscriptionJpaRepositoryTest {
                 .customer(customer)
                 .planId(UUID.randomUUID())
                 .status(BillingSubscriptionStatus.PENDING)
+                .billingInterval("monthly")
                 .build());
 
         Optional<BillingSubscription> found = repository.findBySubscriptionId(subId);
@@ -64,6 +65,7 @@ class BillingSubscriptionJpaRepositoryTest {
                 .customer(customer)
                 .planId(UUID.randomUUID())
                 .status(BillingSubscriptionStatus.PENDING)
+                .billingInterval("monthly")
                 .build());
 
         saved.setStatus(BillingSubscriptionStatus.ACTIVE);
@@ -93,6 +95,7 @@ class BillingSubscriptionJpaRepositoryTest {
                 .customer(customer)
                 .planId(UUID.randomUUID())
                 .status(BillingSubscriptionStatus.PENDING)
+                .billingInterval("monthly")
                 .build());
 
         BillingSubscription dup = BillingSubscription.builder()
@@ -101,6 +104,7 @@ class BillingSubscriptionJpaRepositoryTest {
                 .customer(customer)
                 .planId(UUID.randomUUID())
                 .status(BillingSubscriptionStatus.PENDING)
+                .billingInterval("monthly")
                 .build();
         assertThrows(DataIntegrityViolationException.class, () -> repository.saveAndFlush(dup));
     }

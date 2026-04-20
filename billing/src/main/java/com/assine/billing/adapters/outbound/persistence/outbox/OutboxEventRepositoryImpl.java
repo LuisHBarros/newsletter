@@ -128,4 +128,9 @@ public class OutboxEventRepositoryImpl implements OutboxEventRepository {
     public void scheduleRetry(UUID id, Instant nextAttemptAt, String error) {
         jpaRepository.scheduleRetry(id, nextAttemptAt, error);
     }
+
+    @Override
+    public long countByStatus(OutboxEventStatus status) {
+        return jpaRepository.countByStatus(status);
+    }
 }

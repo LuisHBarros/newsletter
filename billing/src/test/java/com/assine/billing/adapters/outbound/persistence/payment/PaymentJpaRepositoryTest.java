@@ -52,6 +52,7 @@ class PaymentJpaRepositoryTest {
                 .customer(customer)
                 .planId(UUID.randomUUID())
                 .status(BillingSubscriptionStatus.PENDING)
+                .billingInterval("monthly")
                 .providerSubscriptionRef("sub_test")
                 .build());
     }

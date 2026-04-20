@@ -2,6 +2,7 @@ package com.assine.billing.adapters.outbound.messaging.sqs;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.awspring.cloud.sqs.operations.SqsTemplate;
+import io.micrometer.tracing.Tracer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,7 +18,6 @@ import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,6 +31,9 @@ class SqsEventPublisherTest {
     @Mock
     private ObjectMapper objectMapper;
 
+    @Mock
+    private Tracer tracer;
+
     @Captor
     @SuppressWarnings("rawtypes")
     ArgumentCaptor<Consumer> sendOptionsCaptor;
@@ -39,7 +42,7 @@ class SqsEventPublisherTest {
 
     @BeforeEach
     void setUp() {
-        publisher = new SqsEventPublisher(sqsTemplate, objectMapper);
+        publisher = new SqsEventPublisher(sqsTemplate, objectMapper, tracer);
         ReflectionTestUtils.setField(publisher, "eventsQueue", "assine-events");
         ReflectionTestUtils.setField(publisher, "subscriptionsQueue", "assine-subscriptions.fifo");
     }
@@ -112,8 +115,8 @@ class SqsEventPublisherTest {
 
         publisher.publish("some.other.event", "Other", "id", payload);
 
-        verify(sqsTemplate).send(eq("assine-events"), any(Map.class));
-        verify(sqsTemplate, never()).send(any(Consumer.class));
+        verify(sqsTemplate).send(sendOptionsCaptor.capture());
+        verify(sqsTemplate, never()).send(any(String.class), any());
     }
 
     @Test
@@ -122,8 +125,8 @@ class SqsEventPublisherTest {
 
         publisher.publish("eventId", "content.newsletter.created", "Newsletter", "id", payload);
 
-        verify(sqsTemplate).send(eq("assine-events"), any(Map.class));
-        verify(sqsTemplate, never()).send(any(Consumer.class));
+        verify(sqsTemplate).send(sendOptionsCaptor.capture());
+        verify(sqsTemplate, never()).send(any(String.class), any());
     }
 
     @Test
