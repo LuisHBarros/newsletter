@@ -174,8 +174,9 @@ jobs:
         if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ${{ matrix.service }}/Dockerfile
+          # Context eh o diretorio do servico (nao a raiz do repo): o Dockerfile
+          # faz COPY mvnw/.mvn/pom.xml/src relativos ao proprio diretorio.
+          context: ${{ matrix.service }}
           push: true
           tags: |
             ${{ steps.ecr.outputs.registry }}/assine/${{ matrix.service }}:${{ github.sha }}
