@@ -151,4 +151,9 @@ resource "aws_ecs_service" "this" {
     # e aponta o servico para ela. Ignorar aqui preserva esse estado.
     ignore_changes = [task_definition, desired_count]
   }
+
+  # ECS CreateService exige que o target group ja esteja associado a um LB via
+  # listener/rule; sem isso o Terraform pode criar o service em paralelo com a
+  # rule e receber "target group does not have an associated load balancer".
+  depends_on = [aws_lb_listener_rule.this]
 }

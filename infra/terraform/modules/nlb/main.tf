@@ -23,18 +23,22 @@ resource "aws_lb" "nlb" {
 }
 
 resource "aws_lb_target_group" "alb" {
-  name     = "assine-alb-tg-${var.env_suffix}"
-  port     = 443
-  protocol = "TLS"
+  name = "assine-alb-tg-${var.env_suffix}"
+  port = 443
+  # AWS so permite target_type=alb com protocolo TCP. TLS termina no proprio
+  # ALB (HTTPS:443), mantendo TLS end-to-end entre cliente e ALB.
+  protocol = "TCP"
   vpc_id   = var.vpc_id
 
   target_type = "alb"
 
+  # target_type=alb usa health check HTTP/HTTPS contra o proprio ALB.
   health_check {
     enabled  = true
     path     = "/healthz"
     port     = "443"
     protocol = "HTTPS"
+    matcher  = "200-399"
     interval = 30
     timeout  = 5
   }
@@ -48,8 +52,8 @@ resource "aws_lb_target_group" "alb" {
 resource "aws_lb_listener" "tcp" {
   load_balancer_arn = aws_lb.nlb.arn
   port              = 443
-  protocol          = "TLS"
-  certificate_arn   = var.certificate_arn
+  # Passthrough TCP: NLB nao termina TLS. Certificado fica no ALB.
+  protocol = "TCP"
 
   default_action {
     type             = "forward"

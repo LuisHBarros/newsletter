@@ -413,6 +413,25 @@ resource "aws_s3_bucket_policy" "alb_logs" {
         }
         Action   = "s3:GetBucketAcl"
         Resource = aws_s3_bucket.alb_logs[0].arn
+      },
+      # Modern principal recomendado pela AWS para entrega de logs de ALB em
+      # todas as regioes. Necessario em buckets BucketOwnerEnforced (ACLs
+      # desativadas), pois nao depende da ACL bucket-owner-full-control.
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "logdelivery.elasticloadbalancing.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.alb_logs[0].arn}/AWSLogs/*"
+      },
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "logdelivery.elasticloadbalancing.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.alb_logs[0].arn
       }
     ]
   })
