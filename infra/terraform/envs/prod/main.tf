@@ -37,8 +37,8 @@ module "security_groups" {
 module "rds" {
   source = "../../modules/rds"
 
-  private_subnet_ids       = module.vpc.private_subnet_ids
-  sg_rds_id                = module.security_groups.sg_rds_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  sg_rds_id          = module.security_groups.sg_rds_id
   # Free-tier: retention maxima permitida eh 1 dia e Multi-AZ nao eh coberto.
   # Rotacao de secret depende do Lambda do SAR que nao esta instalado.
   backup_retention_period  = 1
@@ -92,9 +92,9 @@ module "iam" {
       aws_secretsmanager_secret.stripe.arn
     ]
   )
-  kms_key_arn           = ""
-  ecr_repo_arns         = values(module.ecr.repository_arns)
-  ecs_cluster_name      = module.ecs_cluster.cluster_name
+  kms_key_arn      = ""
+  ecr_repo_arns    = values(module.ecr.repository_arns)
+  ecs_cluster_name = module.ecs_cluster.cluster_name
   # Literais (nao referenciar module.lambda.*) para quebrar a dependencia
   # iam -> lambda. Com a referencia, `terraform apply -target=module.iam` no
   # bootstrap arrastava module.lambda para o plano, e a Lambda exige que a
@@ -317,11 +317,13 @@ module "monitoring" {
   service_names = ["billing", "content", "subscriptions"]
   dlq_arns      = [for q in module.sqs.queues : q.dlq_arn]
   cluster_name  = module.ecs_cluster.cluster_name
-  target_group_arns = [
-    module.svc_billing.target_group_arn,
-    module.svc_content.target_group_arn,
-    module.svc_subscriptions.target_group_arn,
-  ]
+  # Map com chaves estaticas (conhecidas no plan) para permitir for_each no
+  # modulo de monitoring mesmo antes dos target groups serem criados.
+  target_group_arns = {
+    billing       = module.svc_billing.target_group_arn
+    content       = module.svc_content.target_group_arn
+    subscriptions = module.svc_subscriptions.target_group_arn
+  }
 }
 
 output "alb_dns" {

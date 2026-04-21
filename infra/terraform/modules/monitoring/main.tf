@@ -62,9 +62,9 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
 
 # ALB 5xx error alarms (one per target group)
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
-  for_each = toset(var.target_group_arns)
+  for_each = var.target_group_arns
 
-  alarm_name          = "assine-${var.env_suffix}-alb-5xx-errors"
+  alarm_name          = "assine-${var.env_suffix}-${each.key}-alb-5xx-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "HTTPCode_Target_5XX_Count"

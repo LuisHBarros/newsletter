@@ -24,6 +24,6 @@ variable "cluster_name" {
 }
 
 variable "target_group_arns" {
-  type        = list(string)
-  description = "List of ALB target group ARNs to monitor"
+  type        = map(string)
+  description = "Map of service name -> ALB target group ARN. Keys devem ser estaticos (conhecidos no plan) para viabilizar for_each mesmo quando os ARNs ainda nao existem."
 }
