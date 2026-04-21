@@ -103,10 +103,6 @@ jobs:
       fail-fast: false
       matrix:
         service: [billing, content, subscriptions]
-    # Roda sempre que houve mudanca no servico (para tests de PR) OU quando
-    # o infra-bootstrap acabou de rodar (primeiro push com infra nova, precisa
-    # publicar :latest para o deploy-infra conseguir criar ECS services).
-    # A guarda por-servico esta em step.changed.
     steps:
       - uses: actions/checkout@v4
 
@@ -190,7 +186,13 @@ jobs:
         id: changed
         run: |
           CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
-          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          BOOTSTRAP_RAN="${{ needs.infra-bootstrap.outputs.ran }}"
+          if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Skipping ${{ matrix.service }} - no changes detected"
+          fi
 
       - uses: actions/setup-go@v5
         if: steps.changed.outputs.changed == 'true'
@@ -268,7 +270,7 @@ jobs:
 
       - name: Verify ECR images exist before apply
         run: |
-          for svc in access notifications; do
+          for svc in access notifications billing content subscriptions; do
             aws ecr describe-images \
               --repository-name assine/$svc \
               --image-ids imageTag=latest \
