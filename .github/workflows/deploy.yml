@@ -203,6 +203,20 @@ jobs:
             echo "::warning::ECS service $SERVICE does not exist yet; skipping in-place update. deploy-infra will create it from :latest."
             exit 0
           fi
+          # Se o target group nao esta associado a nenhum load balancer (ex.:
+          # infra anterior falhou antes de criar as listener rules), o
+          # update-service rejeita com InvalidParameterException. Nesse caso,
+          # pulamos e deixamos o deploy-infra reconciliar.
+          TG_ARNS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].loadBalancers[].targetGroupArn' --output text)
+          for TG_ARN in $TG_ARNS; do
+            LB_ARN=$(aws elbv2 describe-target-groups --target-group-arns "$TG_ARN" \
+              --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
+            if [ "$LB_ARN" == "None" ] || [ -z "$LB_ARN" ]; then
+              echo "::warning::Target group $TG_ARN has no associated load balancer. Skipping in-place update for $SERVICE; deploy-infra will reconcile."
+              exit 0
+            fi
+          done
           NEW_IMAGE="$ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG"
           CURRENT_TD_ARN=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
             --query 'services[0].taskDefinition' --output text)
