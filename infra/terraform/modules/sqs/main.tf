@@ -30,6 +30,7 @@ resource "aws_sqs_queue" "dlq" {
   for_each = local.queues
 
   name                      = each.value.fifo ? "${each.key}-dlq.fifo" : "${each.key}-dlq"
+  fifo_queue                = each.value.fifo
   message_retention_seconds = 1209600
   sqs_managed_sse_enabled   = true
 
