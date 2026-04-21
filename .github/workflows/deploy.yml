@@ -194,6 +194,15 @@ jobs:
           CONTAINER: ${{ matrix.service }}
         run: |
           set -euo pipefail
+          # Na primeira execucao ainda nao existe ECS service (eh criado em
+          # deploy-infra com :latest). Saimos com warning; runs seguintes seguem
+          # o caminho normal de SHA-pin.
+          ACTIVE_SVC=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[?status==`ACTIVE`] | [0].serviceName' --output text 2>/dev/null || echo "")
+          if [ "$ACTIVE_SVC" != "$SERVICE" ]; then
+            echo "::warning::ECS service $SERVICE does not exist yet; skipping in-place update. deploy-infra will create it from :latest."
+            exit 0
+          fi
           NEW_IMAGE="$ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG"
           CURRENT_TD_ARN=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
             --query 'services[0].taskDefinition' --output text)
@@ -294,9 +303,17 @@ jobs:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          set -euo pipefail
+          FN="assine-${{ matrix.service }}-prod"
+          # Na primeira execucao a funcao ainda nao existe (eh criada em
+          # deploy-infra via Terraform com :latest). Saimos com warning.
+          if ! aws lambda get-function --function-name "$FN" >/dev/null 2>&1; then
+            echo "::warning::Lambda $FN does not exist yet; skipping in-place update. deploy-infra will create it from :latest."
+            exit 0
+          fi
           aws lambda update-function-code \
-            --function-name assine-${{ matrix.service }}-prod \
-            --image-uri $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG
+            --function-name "$FN" \
+            --image-uri "$ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG"
 
   # Fase 2 do apply: recursos que dependem das imagens ja existirem no ECR
   # (ECS services, Lambdas, ALB listener rules, API Gateway, monitoring).
