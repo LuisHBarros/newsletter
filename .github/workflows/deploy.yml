@@ -53,6 +53,8 @@ jobs:
   infra-bootstrap:
     needs: detect-changes
     runs-on: ubuntu-latest
+    outputs:
+      ran: ${{ steps.apply.outputs.ran }}
     if: |
       needs.detect-changes.outputs.infra == 'true' &&
       github.event_name == 'push'
@@ -77,6 +79,7 @@ jobs:
         run: terraform init -input=false
 
       - name: Terraform Apply (bootstrap targets)
+        id: apply
         working-directory: infra/terraform/envs/prod
         run: |
           terraform apply -input=false -auto-approve \
@@ -88,6 +91,7 @@ jobs:
             -target=module.rds \
             -target=module.sqs \
             -target=module.cognito
+          echo "ran=true" >> $GITHUB_OUTPUT
 
   build-java:
     needs: [detect-changes, infra-bootstrap]
@@ -110,8 +114,11 @@ jobs:
         id: changed
         run: |
           CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
-          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
-          if [ "$CHANGED" != "true" ]; then
+          BOOTSTRAP_RAN="${{ needs.infra-bootstrap.outputs.ran }}"
+          if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
             echo "Skipping ${{ matrix.service }} - no changes detected"
           fi
 
@@ -174,7 +181,8 @@ jobs:
       always() &&
       (needs.infra-bootstrap.result == 'success' || needs.infra-bootstrap.result == 'skipped') &&
       (needs.detect-changes.outputs.notifications == 'true' ||
-       needs.detect-changes.outputs.access == 'true')
+       needs.detect-changes.outputs.access == 'true' ||
+       needs.infra-bootstrap.outputs.ran == 'true')
     steps:
       - uses: actions/checkout@v4
 
@@ -257,6 +265,16 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.5"
+
+      - name: Verify ECR images exist before apply
+        run: |
+          for svc in access notifications; do
+            aws ecr describe-images \
+              --repository-name assine/$svc \
+              --image-ids imageTag=latest \
+              --region ${{ env.AWS_REGION }} || \
+              (echo "Image assine/$svc:latest not found in ECR. Aborting." && exit 1)
+          done
 
       - name: Terraform Init
         working-directory: infra/terraform/envs/prod
