@@ -31,8 +31,15 @@ resource "aws_cognito_user_pool" "main" {
   # Usa SES (DEVELOPER) apenas quando ha uma identidade em regiao suportada
   # por Cognito (us-east-1, us-west-2, eu-west-1). Caso contrario, cai no
   # envio padrao do Cognito (limitado a 50 emails/dia - suficiente p/ dev).
+  # A regiao eh extraida do ARN: arn:aws:ses:<regiao>:<acct>:identity/<email>
   dynamic "email_configuration" {
-    for_each = var.ses_sender_identity_arn != "" ? [1] : []
+    for_each = (
+      var.ses_sender_identity_arn != "" &&
+      contains(
+        ["us-east-1", "us-west-2", "eu-west-1"],
+        try(split(":", var.ses_sender_identity_arn)[3], "")
+      )
+    ) ? [1] : []
     content {
       email_sending_account = "DEVELOPER"
       from_email_address    = var.ses_sender_email

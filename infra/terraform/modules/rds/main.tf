@@ -141,8 +141,11 @@ resource "null_resource" "db_bootstrap_deps" {
     requirements = fileexists("${path.module}/files/requirements.txt") ? filemd5("${path.module}/files/requirements.txt") : "none"
   }
 
+  # Instala dependencias diretamente no diretorio da funcao (nao em python/),
+  # pois o zip eh a propria funcao Lambda e nao um Layer. Dependencias em
+  # python/ so funcionariam como Layer.
   provisioner "local-exec" {
-    command = "pip install -q -r ${path.module}/files/requirements.txt -t ${path.module}/files/python"
+    command = "pip install -q -r ${path.module}/files/requirements.txt -t ${path.module}/files --upgrade"
   }
 }
 
