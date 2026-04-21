@@ -137,15 +137,18 @@ resource "aws_secretsmanager_secret_version" "app_users" {
 resource "null_resource" "db_bootstrap_deps" {
   count = length(var.private_subnet_ids) > 0 ? 1 : 0
 
+  # Inclui a versao do script de install como trigger para forcar reinstalacao
+  # quando o layout de deps muda (ex.: passamos de files/python para files/).
   triggers = {
     requirements = fileexists("${path.module}/files/requirements.txt") ? filemd5("${path.module}/files/requirements.txt") : "none"
+    install_cmd  = "v2-flat-layout"
   }
 
   # Instala dependencias diretamente no diretorio da funcao (nao em python/),
   # pois o zip eh a propria funcao Lambda e nao um Layer. Dependencias em
   # python/ so funcionariam como Layer.
   provisioner "local-exec" {
-    command = "pip install -q -r ${path.module}/files/requirements.txt -t ${path.module}/files --upgrade"
+    command = "rm -rf ${path.module}/files/python && pip install -q -r ${path.module}/files/requirements.txt -t ${path.module}/files --upgrade"
   }
 }
 
