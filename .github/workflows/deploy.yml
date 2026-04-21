@@ -62,7 +62,7 @@ jobs:
     outputs:
       ran: ${{ steps.apply.outputs.ran }}
     if: |
-      (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == true) &&
+      (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == 'true') &&
       github.event_name != 'pull_request'
     env:
       TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
@@ -115,7 +115,11 @@ jobs:
       - name: Check if this service changed
         id: changed
         run: |
-          CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
+          case "${{ matrix.service }}" in
+            billing)       CHANGED="${{ needs.detect-changes.outputs.billing }}" ;;
+            content)       CHANGED="${{ needs.detect-changes.outputs.content }}" ;;
+            subscriptions) CHANGED="${{ needs.detect-changes.outputs.subscriptions }}" ;;
+          esac
           BOOTSTRAP_RAN="${{ needs.infra-bootstrap.outputs.ran }}"
           FORCE="${{ inputs.force_deploy }}"
           if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ] || [ "$FORCE" == "true" ]; then
@@ -160,18 +164,31 @@ jobs:
           docker push $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG
           docker push $ECR_REGISTRY/assine/${{ matrix.service }}:latest
 
-      - name: Deploy to ECS
+      - name: Deploy to ECS (pin SHA in new task definition)
         if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          CLUSTER: assine-prod
+          SERVICE: assine-${{ matrix.service }}-prod
+          CONTAINER: ${{ matrix.service }}
         run: |
-          aws ecs update-service \
-            --cluster assine-prod \
-            --service assine-${{ matrix.service }}-prod \
-            --force-new-deployment
-          aws ecs wait services-stable \
-            --cluster assine-prod \
-            --services assine-${{ matrix.service }}-prod
+          set -euo pipefail
+          NEW_IMAGE="$ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG"
+          CURRENT_TD_ARN=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          aws ecs describe-task-definition --task-definition "$CURRENT_TD_ARN" \
+            --query 'taskDefinition' > td.json
+          jq --arg IMG "$NEW_IMAGE" --arg NAME "$CONTAINER" '
+            .containerDefinitions |= map(if .name == $NAME then .image = $IMG else . end)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                  .compatibilities, .registeredAt, .registeredBy)
+          ' td.json > td-new.json
+          NEW_TD_ARN=$(aws ecs register-task-definition --cli-input-json file://td-new.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+            --task-definition "$NEW_TD_ARN"
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
 
   build-lambda-go:
     needs: [detect-changes, infra-bootstrap]
@@ -189,7 +206,10 @@ jobs:
       - name: Check if this service changed
         id: changed
         run: |
-          CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
+          case "${{ matrix.service }}" in
+            notifications) CHANGED="${{ needs.detect-changes.outputs.notifications }}" ;;
+            access)        CHANGED="${{ needs.detect-changes.outputs.access }}" ;;
+          esac
           BOOTSTRAP_RAN="${{ needs.infra-bootstrap.outputs.ran }}"
           FORCE="${{ inputs.force_deploy }}"
           if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ] || [ "$FORCE" == "true" ]; then
@@ -252,7 +272,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       always() &&
-      (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == true) &&
+      (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == 'true') &&
       github.event_name != 'pull_request' &&
       needs.infra-bootstrap.result == 'success' &&
       (needs.build-java.result == 'success' || needs.build-java.result == 'skipped') &&
@@ -274,13 +294,19 @@ jobs:
           terraform_version: "~1.5"
 
       - name: Verify ECR images exist before apply
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           for svc in access notifications billing content subscriptions; do
             aws ecr describe-images \
               --repository-name assine/$svc \
+              --image-ids imageTag=$IMAGE_TAG \
+              --region ${{ env.AWS_REGION }} 2>/dev/null || \
+            aws ecr describe-images \
+              --repository-name assine/$svc \
               --image-ids imageTag=latest \
               --region ${{ env.AWS_REGION }} || \
-              (echo "Image assine/$svc:latest not found in ECR. Aborting." && exit 1)
+              (echo "No image for assine/$svc found in ECR. Aborting." && exit 1)
           done
 
       - name: Terraform Init
