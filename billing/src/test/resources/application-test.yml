@@ -19,6 +19,12 @@ spring:
           # call happens at startup. Tests that need tokens use jwt() post-processor.
           jwk-set-uri: http://localhost/.well-known/jwks.json
   cloud:
+    aws:
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
     compatibility-verifier:
       enabled: false
 
