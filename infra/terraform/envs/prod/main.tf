@@ -127,7 +127,7 @@ module "alb" {
   sg_alb_id               = module.security_groups.sg_alb_id
   certificate_arn         = var.acm_cert_arn
   env_suffix              = var.env_suffix
-  access_logs_bucket_name = "assine-alb-logs-prod"
+  access_logs_bucket_name = ""
 }
 
 module "ecs_cluster" {
