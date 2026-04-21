@@ -305,7 +305,7 @@ module "monitoring" {
   env_suffix    = var.env_suffix
   alert_email   = var.alert_email
   service_names = ["billing", "content", "subscriptions"]
-  dlq_arns      = values(module.sqs.dlq_arns)
+  dlq_arns      = [for q in module.sqs.queues : q.dlq_arn]
   cluster_name  = module.ecs_cluster.cluster_name
   target_group_arns = [
     module.svc_billing.target_group_arn,

@@ -54,7 +54,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
   datapoints_to_alarm = 2
   treat_missing_data  = "notBreaching"
 
-  dimensions {
+  dimensions = {
     ServiceName = "assine-${each.value}-${var.env_suffix}"
     ClusterName = var.cluster_name
   }
@@ -78,7 +78,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   datapoints_to_alarm = 1
   treat_missing_data  = "notBreaching"
 
-  dimensions {
+  dimensions = {
     LoadBalancer = each.value
   }
 }
