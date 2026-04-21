@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force full deploy (bypasses change detection)'
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
@@ -56,8 +62,8 @@ jobs:
     outputs:
       ran: ${{ steps.apply.outputs.ran }}
     if: |
-      needs.detect-changes.outputs.infra == 'true' &&
-      github.event_name == 'push'
+      (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == true) &&
+      github.event_name != 'pull_request'
     env:
       TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
       TF_VAR_ses_sender_identity_arn: ${{ secrets.SES_SENDER_IDENTITY_ARN }}
@@ -111,7 +117,8 @@ jobs:
         run: |
           CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
           BOOTSTRAP_RAN="${{ needs.infra-bootstrap.outputs.ran }}"
-          if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ]; then
+          FORCE="${{ inputs.force_deploy }}"
+          if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ] || [ "$FORCE" == "true" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -130,19 +137,19 @@ jobs:
         run: mvn -pl ${{ matrix.service }} -am test
 
       - name: Configure AWS credentials (OIDC)
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & push Docker image
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -154,7 +161,7 @@ jobs:
           docker push $ECR_REGISTRY/assine/${{ matrix.service }}:latest
 
       - name: Deploy to ECS
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
@@ -175,10 +182,7 @@ jobs:
         service: [notifications, access]
     if: |
       always() &&
-      (needs.infra-bootstrap.result == 'success' || needs.infra-bootstrap.result == 'skipped') &&
-      (needs.detect-changes.outputs.notifications == 'true' ||
-       needs.detect-changes.outputs.access == 'true' ||
-       needs.infra-bootstrap.outputs.ran == 'true')
+      (needs.infra-bootstrap.result == 'success' || needs.infra-bootstrap.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
 
@@ -187,7 +191,8 @@ jobs:
         run: |
           CHANGED="${{ needs.detect-changes.outputs[matrix.service] }}"
           BOOTSTRAP_RAN="${{ needs.infra-bootstrap.outputs.ran }}"
-          if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ]; then
+          FORCE="${{ inputs.force_deploy }}"
+          if [ "$CHANGED" == "true" ] || [ "$BOOTSTRAP_RAN" == "true" ] || [ "$FORCE" == "true" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -205,19 +210,19 @@ jobs:
         run: go test ./...
 
       - name: Configure AWS credentials (OIDC)
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build & push Lambda container image
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -230,7 +235,7 @@ jobs:
           docker push $ECR_REGISTRY/assine/${{ matrix.service }}:latest
 
       - name: Update Lambda function
-        if: steps.changed.outputs.changed == 'true' && github.event_name == 'push'
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
         env:
           ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -247,8 +252,8 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       always() &&
-      needs.detect-changes.outputs.infra == 'true' &&
-      github.event_name == 'push' &&
+      (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == true) &&
+      github.event_name != 'pull_request' &&
       needs.infra-bootstrap.result == 'success' &&
       (needs.build-java.result == 'success' || needs.build-java.result == 'skipped') &&
       (needs.build-lambda-go.result == 'success' || needs.build-lambda-go.result == 'skipped')
