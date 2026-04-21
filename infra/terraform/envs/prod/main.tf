@@ -95,7 +95,15 @@ module "iam" {
   kms_key_arn           = ""
   ecr_repo_arns         = values(module.ecr.repository_arns)
   ecs_cluster_name      = module.ecs_cluster.cluster_name
-  lambda_function_names = [module.lambda.access_function_name, module.lambda.notifications_function_name]
+  # Literais (nao referenciar module.lambda.*) para quebrar a dependencia
+  # iam -> lambda. Com a referencia, `terraform apply -target=module.iam` no
+  # bootstrap arrastava module.lambda para o plano, e a Lambda exige que a
+  # imagem :latest ja exista no ECR -- o que so acontece apos build-lambda-go.
+  # Os nomes abaixo sao os mesmos definidos em modules/lambda/main.tf.
+  lambda_function_names = [
+    "assine-access-${var.env_suffix}",
+    "assine-notifications-${var.env_suffix}",
+  ]
 
   sqs_arns = {
     events        = module.sqs.queues["assine-events-${var.env_suffix}"].arn

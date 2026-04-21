@@ -97,6 +97,10 @@ jobs:
         id: apply
         working-directory: infra/terraform/envs/prod
         run: |
+          # module.lambda NAO eh alvo aqui de proposito: as Lambdas referenciam
+          # ${ecr_repo}:latest, que so passa a existir apos build-lambda-go.
+          # O apply completo em deploy-infra (Fase 2) cria as Lambdas com as
+          # imagens ja publicadas.
           terraform apply -input=false -auto-approve \
             -var-file=prod.tfvars \
             -target=module.ecr \
@@ -105,8 +109,7 @@ jobs:
             -target=module.iam \
             -target=module.rds \
             -target=module.sqs \
-            -target=module.cognito \
-            -target=module.lambda
+            -target=module.cognito
           echo "ran=true" >> $GITHUB_OUTPUT
 
   build-java:
