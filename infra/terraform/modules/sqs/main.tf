@@ -42,8 +42,10 @@ resource "aws_sqs_queue" "dlq" {
 resource "aws_sqs_queue" "main" {
   for_each = local.queues
 
-  name                    = each.value.fifo ? "${each.key}.fifo" : each.key
-  sqs_managed_sse_enabled = true
+  name                        = each.value.fifo ? "${each.key}.fifo" : each.key
+  fifo_queue                  = each.value.fifo
+  content_based_deduplication = each.value.content_dedup
+  sqs_managed_sse_enabled     = true
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq[each.key].arn
