@@ -3,3 +3,8 @@
 /.vscode
 *.zip
 /infra/terraform/modules/rds/files/python/
+/infra/terraform/modules/rds/files/*.dist-info/
+/infra/terraform/modules/rds/files/__pycache__/
+/infra/terraform/modules/rds/files/*
+!/infra/terraform/modules/rds/files/db_bootstrap.py
+!/infra/terraform/modules/rds/files/requirements.txt

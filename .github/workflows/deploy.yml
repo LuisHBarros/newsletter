@@ -76,6 +76,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Lambda bootstrap dependencies
+        run: pip install -q -r infra/terraform/modules/rds/files/requirements.txt -t infra/terraform/modules/rds/files --upgrade
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -302,6 +305,9 @@ jobs:
       TF_VAR_ses_sender_identity_arn: ${{ secrets.SES_SENDER_IDENTITY_ARN }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Lambda bootstrap dependencies
+        run: pip install -q -r infra/terraform/modules/rds/files/requirements.txt -t infra/terraform/modules/rds/files --upgrade
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
