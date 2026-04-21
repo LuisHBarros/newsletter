@@ -18,6 +18,11 @@ variable "alb_arn" {
   description = "ALB ARN to forward traffic to"
 }
 
+variable "alb_listener_arn" {
+  type        = string
+  description = "ALB HTTPS listener ARN; used to enforce dependency ordering"
+}
+
 variable "certificate_arn" {
   type        = string
   default     = ""

@@ -65,4 +65,6 @@ resource "aws_lb_target_group_attachment" "alb" {
   target_group_arn = aws_lb_target_group.alb.arn
   target_id        = var.alb_arn
   port             = 443
+
+  depends_on = [var.alb_listener_arn]
 }

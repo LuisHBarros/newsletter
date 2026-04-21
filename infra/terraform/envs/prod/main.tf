@@ -154,6 +154,7 @@ module "nlb" {
   env_suffix         = var.env_suffix
   private_subnet_ids = module.vpc.private_subnet_ids
   alb_arn            = module.alb.alb_arn
+  alb_listener_arn   = module.alb.listener_arn
   certificate_arn    = var.acm_cert_arn
 }
 
