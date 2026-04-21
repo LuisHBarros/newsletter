@@ -62,8 +62,7 @@ resource "aws_lb_listener" "tcp" {
 }
 
 resource "aws_lb_target_group_attachment" "alb" {
-  target_group_arn  = aws_lb_target_group.alb.arn
-  target_id         = var.alb_arn
-  port              = 443
-  availability_zone = "all"
+  target_group_arn = aws_lb_target_group.alb.arn
+  target_id        = var.alb_arn
+  port             = 443
 }
