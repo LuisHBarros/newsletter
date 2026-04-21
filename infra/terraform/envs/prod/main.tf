@@ -39,9 +39,9 @@ module "rds" {
 
   private_subnet_ids = module.vpc.private_subnet_ids
   sg_rds_id          = module.security_groups.sg_rds_id
-  # Free-tier: retention maxima permitida eh 1 dia e Multi-AZ nao eh coberto.
+  # Free-tier: automated backups nao sao permitidos em db.t4g.micro.
   # Rotacao de secret depende do Lambda do SAR que nao esta instalado.
-  backup_retention_period  = 1
+  backup_retention_period  = 0
   deletion_protection      = true
   skip_final_snapshot      = false
   env_suffix               = var.env_suffix
@@ -142,6 +142,7 @@ module "cognito" {
 
   env_suffix              = var.env_suffix
   aws_region              = "us-east-1"
+  use_ses_email           = false
   ses_sender_email        = var.ses_sender_email
   ses_sender_identity_arn = var.ses_sender_identity_arn
 }

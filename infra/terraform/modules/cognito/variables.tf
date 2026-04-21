@@ -19,6 +19,12 @@ variable "ses_sender_identity_arn" {
   description = "ARN of the verified SES sender identity"
 }
 
+variable "use_ses_email" {
+  type        = bool
+  default     = false
+  description = "Use SES (DEVELOPER) for Cognito emails. Only enable if the SES identity is fully verified in a supported region."
+}
+
 variable "callback_urls" {
   type        = list(string)
   default     = ["http://localhost:3000/callback"]

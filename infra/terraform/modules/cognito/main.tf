@@ -34,6 +34,7 @@ resource "aws_cognito_user_pool" "main" {
   # A regiao eh extraida do ARN: arn:aws:ses:<regiao>:<acct>:identity/<email>
   dynamic "email_configuration" {
     for_each = (
+      var.use_ses_email &&
       var.ses_sender_identity_arn != "" &&
       contains(
         ["us-east-1", "us-west-2", "eu-west-1"],
