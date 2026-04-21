@@ -33,7 +33,7 @@ def handler(event, context):
             cur = conn.cursor()
             
             cur.execute(
-                "SELECT 1 FROM pg_database WHERE datname = :1",
+                "SELECT 1 FROM pg_database WHERE datname = %s",
                 (db_name,)
             )
             if cur.fetchone() is None:
@@ -43,20 +43,16 @@ def handler(event, context):
                 results.append(f"Database {db_name} already exists")
             
             cur.execute(
-                "SELECT 1 FROM pg_roles WHERE rolname = :1",
+                "SELECT 1 FROM pg_roles WHERE rolname = %s",
                 (db_user,)
             )
             if cur.fetchone() is None:
-                cur.execute(
-                    f'CREATE ROLE "{db_user}" WITH LOGIN PASSWORD :1',
-                    (db_pass,)
-                )
+                db_pass_escaped = db_pass.replace("'", "''")
+                cur.execute(f'CREATE ROLE "{db_user}" WITH LOGIN PASSWORD \'{db_pass_escaped}\'')
                 results.append(f"Created role {db_user}")
             else:
-                cur.execute(
-                    f'ALTER ROLE "{db_user}" WITH LOGIN PASSWORD :1',
-                    (db_pass,)
-                )
+                db_pass_escaped = db_pass.replace("'", "''")
+                cur.execute(f'ALTER ROLE "{db_user}" WITH LOGIN PASSWORD \'{db_pass_escaped}\'')
                 results.append(f"Updated password for role {db_user}")
             
             cur.execute(f'GRANT CREATE, USAGE ON SCHEMA public TO "{db_user}"')
