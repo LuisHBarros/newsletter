@@ -33,7 +33,7 @@ def handler(event, context):
             cur = conn.cursor()
             
             cur.execute(
-                "SELECT 1 FROM pg_database WHERE datname = %s",
+                "SELECT 1 FROM pg_database WHERE datname = :1",
                 (db_name,)
             )
             if cur.fetchone() is None:
@@ -43,18 +43,18 @@ def handler(event, context):
                 results.append(f"Database {db_name} already exists")
             
             cur.execute(
-                "SELECT 1 FROM pg_roles WHERE rolname = %s",
+                "SELECT 1 FROM pg_roles WHERE rolname = :1",
                 (db_user,)
             )
             if cur.fetchone() is None:
                 cur.execute(
-                    f"CREATE ROLE \"{db_user}\" WITH LOGIN PASSWORD %s",
+                    f'CREATE ROLE "{db_user}" WITH LOGIN PASSWORD :1',
                     (db_pass,)
                 )
                 results.append(f"Created role {db_user}")
             else:
                 cur.execute(
-                    f"ALTER ROLE \"{db_user}\" WITH LOGIN PASSWORD %s",
+                    f'ALTER ROLE "{db_user}" WITH LOGIN PASSWORD :1',
                     (db_pass,)
                 )
                 results.append(f"Updated password for role {db_user}")
