@@ -253,7 +253,12 @@ resource "aws_lambda_invocation" "db_init" {
   function_name = aws_lambda_function.db_bootstrap[0].function_name
 
   input = jsonencode({
-    SecretArn = aws_secretsmanager_secret.master.id
+    Admin = {
+      host     = aws_db_instance.main[0].address
+      port     = aws_db_instance.main[0].port
+      username = aws_db_instance.main[0].username
+      password = random_password.master.result
+    }
     Databases = { for k, v in var.databases : k => merge(v, { password = random_password.app_users[k].result }) }
   })
 

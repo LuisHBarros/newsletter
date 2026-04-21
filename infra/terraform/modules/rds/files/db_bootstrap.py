@@ -1,19 +1,16 @@
 import json
-import os
-import boto3
 import pg8000
 
 def handler(event, context):
-    secret_arn = event["SecretArn"]
+    # Credenciais e host chegam diretamente no evento (enviadas pelo
+    # Terraform a partir do estado). Evita dependencia de VPC endpoint /
+    # NAT para alcancar o Secrets Manager durante o bootstrap.
+    admin = event["Admin"]
+    host = admin["host"]
+    port = admin["port"]
+    admin_user = admin["username"]
+    admin_pass = admin["password"]
     databases = event["Databases"]
-    
-    sm = boto3.client("secretsmanager")
-    secret = json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
-    
-    host = secret["host"]
-    port = secret["port"]
-    admin_user = secret["username"]
-    admin_pass = secret["password"]
     
     conn = pg8000.connect(
         host=host,
