@@ -55,6 +55,11 @@ resource "aws_api_gateway_deployment" "main" {
     redeployment = sha1(aws_api_gateway_rest_api.main.body)
   }
 
+  depends_on = [
+    aws_api_gateway_rest_api.main,
+    aws_api_gateway_vpc_link.main,
+  ]
+
   lifecycle {
     create_before_destroy = true
   }

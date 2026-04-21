@@ -1417,7 +1417,7 @@ components:
     vpc-link-proxy:
       type: http_proxy
       httpMethod: ANY
-      uri: "http://${nlb_dns}:{proxy}"
+      uri: "http://${nlb_dns}/{proxy}"
       connectionId: ${vpc_link_id}
       connectionType: VPC_LINK
       passthroughBehavior: "when_no_match"
@@ -1425,7 +1425,7 @@ components:
     vpc-link-proxy-no-auth:
       type: http_proxy
       httpMethod: ANY
-      uri: "http://${nlb_dns}:{proxy}"
+      uri: "http://${nlb_dns}/{proxy}"
       connectionId: ${vpc_link_id}
       connectionType: VPC_LINK
       passthroughBehavior: "when_no_match"
