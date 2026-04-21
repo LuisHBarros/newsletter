@@ -39,14 +39,16 @@ module "rds" {
 
   private_subnet_ids       = module.vpc.private_subnet_ids
   sg_rds_id                = module.security_groups.sg_rds_id
-  backup_retention_period  = 7
+  # Free-tier: retention maxima permitida eh 1 dia e Multi-AZ nao eh coberto.
+  # Rotacao de secret depende do Lambda do SAR que nao esta instalado.
+  backup_retention_period  = 1
   deletion_protection      = true
   skip_final_snapshot      = false
   env_suffix               = var.env_suffix
   lambda_subnet_ids        = module.vpc.private_subnet_ids
   lambda_security_group_id = module.security_groups.sg_lambda_id
-  multi_az                 = true
-  enable_secret_rotation   = true
+  multi_az                 = false
+  enable_secret_rotation   = false
   secret_rotation_days     = 30
   aws_region               = "us-east-1"
   aws_account_id           = data.aws_caller_identity.current.account_id

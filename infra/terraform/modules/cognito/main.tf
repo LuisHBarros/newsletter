@@ -28,10 +28,16 @@ resource "aws_cognito_user_pool" "main" {
     temporary_password_validity_days = 7
   }
 
-  email_configuration {
-    email_sending_account = "DEVELOPER"
-    from_email_address    = var.ses_sender_email
-    source_arn            = var.ses_sender_identity_arn
+  # Usa SES (DEVELOPER) apenas quando ha uma identidade em regiao suportada
+  # por Cognito (us-east-1, us-west-2, eu-west-1). Caso contrario, cai no
+  # envio padrao do Cognito (limitado a 50 emails/dia - suficiente p/ dev).
+  dynamic "email_configuration" {
+    for_each = var.ses_sender_identity_arn != "" ? [1] : []
+    content {
+      email_sending_account = "DEVELOPER"
+      from_email_address    = var.ses_sender_email
+      source_arn            = var.ses_sender_identity_arn
+    }
   }
 
   user_attribute_update_settings {
