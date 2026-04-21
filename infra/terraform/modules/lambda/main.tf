@@ -37,6 +37,13 @@ resource "aws_lambda_function" "access" {
     Name        = "assine-access-${var.env_suffix}"
     Environment = var.env_suffix
   }
+
+  lifecycle {
+    # O pipeline de CI atualiza image_uri com a tag SHA via
+    # `aws lambda update-function-code`. Ignorar aqui evita que o apply
+    # reverta para a tag :latest declarada acima.
+    ignore_changes = [image_uri]
+  }
 }
 
 resource "aws_lambda_function" "notifications" {
@@ -67,6 +74,10 @@ resource "aws_lambda_function" "notifications" {
   tags = {
     Name        = "assine-notifications-${var.env_suffix}"
     Environment = var.env_suffix
+  }
+
+  lifecycle {
+    ignore_changes = [image_uri]
   }
 }
 

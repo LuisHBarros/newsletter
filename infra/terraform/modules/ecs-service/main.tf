@@ -66,6 +66,13 @@ resource "aws_ecs_task_definition" "this" {
       ] : []
     )
   )
+
+  lifecycle {
+    # A imagem do container eh atualizada fora do Terraform pelo pipeline de CI
+    # (register-task-definition apontando para a tag SHA). Ignorar aqui evita
+    # que `terraform apply` reverta para a tag :latest declarada em var.image.
+    ignore_changes = [container_definitions]
+  }
 }
 
 resource "aws_lb_target_group" "this" {
@@ -137,5 +144,11 @@ resource "aws_ecs_service" "this" {
 
   tags = {
     Name = "assine-${var.name}"
+  }
+
+  lifecycle {
+    # O pipeline de CI registra novas revisoes de task definition com a tag SHA
+    # e aponta o servico para ela. Ignorar aqui preserva esse estado.
+    ignore_changes = [task_definition, desired_count]
   }
 }

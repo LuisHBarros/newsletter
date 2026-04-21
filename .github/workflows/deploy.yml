@@ -16,6 +16,12 @@ permissions:
   id-token: write
   contents: read
 
+# Evita deploys concorrentes na mesma branch (race em Terraform state / ECS).
+# PRs tem grupo proprio para nao bloquearem push em main.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
@@ -152,17 +158,22 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
+        uses: docker/setup-buildx-action@v3
+
       - name: Build & push Docker image
         if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
-        env:
-          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG \
-            -t $ECR_REGISTRY/assine/${{ matrix.service }}:latest \
-            -f ${{ matrix.service }}/Dockerfile .
-          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG
-          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:latest
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/assine/${{ matrix.service }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/assine/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       - name: Deploy to ECS (pin SHA in new task definition)
         if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
@@ -241,18 +252,27 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Build Go bootstrap binary
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
+        working-directory: ${{ matrix.service }}
+        run: GOOS=linux GOARCH=arm64 go build -o bootstrap .
+
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
+        uses: docker/setup-buildx-action@v3
+
       - name: Build & push Lambda container image
         if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
-        env:
-          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        working-directory: ${{ matrix.service }}
-        run: |
-          GOOS=linux GOARCH=arm64 go build -o bootstrap .
-          docker build -t $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG \
-            -t $ECR_REGISTRY/assine/${{ matrix.service }}:latest .
-          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:$IMAGE_TAG
-          docker push $ECR_REGISTRY/assine/${{ matrix.service }}:latest
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.service }}
+          push: true
+          platforms: linux/arm64
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/assine/${{ matrix.service }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/assine/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       - name: Update Lambda function
         if: steps.changed.outputs.changed == 'true' && github.event_name != 'pull_request'
