@@ -273,6 +273,11 @@ jobs:
           context: ${{ matrix.service }}
           push: true
           platforms: linux/arm64
+          # Lambda requires Docker v2 schema 2 manifests; disable provenance/SBOM
+          # attestations so Buildx does not wrap the image in an OCI index
+          # (which Lambda rejects with "image manifest ... is not supported").
+          provenance: false
+          sbom: false
           tags: |
             ${{ steps.ecr.outputs.registry }}/assine/${{ matrix.service }}:${{ github.sha }}
             ${{ steps.ecr.outputs.registry }}/assine/${{ matrix.service }}:latest
