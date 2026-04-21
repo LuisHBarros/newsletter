@@ -209,3 +209,6 @@ terraform -chdir=infra/terraform/envs/prod validate
 - DynamoDB tables, S3 buckets (sprint futuro)
 - Cognito User Pool (Sprint 4)
 - Fiscal Lambda (Sprint 3)
+
+## Notes
+- Lambda bootstrap dependencies are installed via pip in CI (see .github/workflows/deploy.yml)
