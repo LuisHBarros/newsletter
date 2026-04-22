@@ -49,9 +49,11 @@ module "rds" {
 
   private_subnet_ids = module.vpc.private_subnet_ids
   sg_rds_id          = module.security_groups.sg_rds_id
-  # RDS Free Tier inclui 20 GB de storage de backup; usar 7d habilita PITR
-  # sem sair do Free Tier. backup=0 zerava qualquer recuperacao apos crash.
-  backup_retention_period  = 7
+  # AWS Free Tier plan cap para backup_retention_period eh 1 dia (verificado
+  # pelo erro FreeTierRestrictionError no apply de 2026-04). Mantemos 1d
+  # para ter PITR de 24h sem upgrade de conta; ao sair do Free Tier, subir
+  # para 7d para aderir ao baseline do audit A2.
+  backup_retention_period  = 1
   deletion_protection      = true
   skip_final_snapshot      = false
   env_suffix               = var.env_suffix
