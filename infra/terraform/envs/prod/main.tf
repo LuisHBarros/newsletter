@@ -10,7 +10,15 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = var.aws_region
+
+  default_tags {
+    tags = {
+      Project     = "assine"
+      Environment = var.env_suffix
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 data "aws_caller_identity" "current" {}
@@ -18,13 +26,15 @@ data "aws_caller_identity" "current" {}
 module "vpc" {
   source = "../../modules/vpc"
 
-  enable_nat                   = true
-  enable_vpc_flow_logs         = true
-  vpc_flow_logs_retention_days = 30
-  enable_vpc_endpoints         = true
-  alb_logs_bucket_name         = "assine-alb-logs-prod"
-  alb_logs_retention_days      = 30
-  aws_region                   = "us-east-1"
+  # Free Tier / ~$200 budget: NAT Gateway custa ~$64/mo (2 AZs), Interface VPC
+  # endpoints ~$36/mo, VPC Flow Logs + ALB access logs sao custos adicionais.
+  # Tasks ECS rodam em subnets publicas com assign_public_ip=true; ingress
+  # restrito por security group (sg_ecs_tasks -> sg_alb).
+  enable_nat           = false
+  enable_vpc_flow_logs = false
+  enable_vpc_endpoints = false
+  alb_logs_bucket_name = ""
+  aws_region           = var.aws_region
 }
 
 module "security_groups" {
@@ -39,18 +49,16 @@ module "rds" {
 
   private_subnet_ids = module.vpc.private_subnet_ids
   sg_rds_id          = module.security_groups.sg_rds_id
-  # Free-tier: automated backups nao sao permitidos em db.t4g.micro.
-  # Rotacao de secret depende do Lambda do SAR que nao esta instalado.
-  backup_retention_period  = 0
+  # RDS Free Tier inclui 20 GB de storage de backup; usar 7d habilita PITR
+  # sem sair do Free Tier. backup=0 zerava qualquer recuperacao apos crash.
+  backup_retention_period  = 7
   deletion_protection      = true
   skip_final_snapshot      = false
   env_suffix               = var.env_suffix
   lambda_subnet_ids        = module.vpc.private_subnet_ids
   lambda_security_group_id = module.security_groups.sg_lambda_id
   multi_az                 = false
-  enable_secret_rotation   = false
-  secret_rotation_days     = 30
-  aws_region               = "us-east-1"
+  aws_region               = var.aws_region
   aws_account_id           = data.aws_caller_identity.current.account_id
 }
 
@@ -83,7 +91,7 @@ module "iam" {
   source = "../../modules/iam-roles"
 
   env_suffix     = var.env_suffix
-  aws_region     = "us-east-1"
+  aws_region     = var.aws_region
   aws_account_id = data.aws_caller_identity.current.account_id
   github_repo    = var.github_repo
   secrets_arns = concat(
@@ -112,8 +120,8 @@ module "iam" {
   }
 
   dynamodb_table_arns = {
-    notifications = "arn:aws:dynamodb:us-east-1:${data.aws_caller_identity.current.account_id}:table/processed_events"
-    access        = "arn:aws:dynamodb:us-east-1:${data.aws_caller_identity.current.account_id}:table/content-permissions"
+    notifications = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/processed_events"
+    access        = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/content-permissions"
   }
 
   ses_sender_email = var.ses_sender_email
@@ -141,28 +149,18 @@ module "cognito" {
   source = "../../modules/cognito"
 
   env_suffix              = var.env_suffix
-  aws_region              = "us-east-1"
+  aws_region              = var.aws_region
+  account_id              = data.aws_caller_identity.current.account_id
   use_ses_email           = false
   ses_sender_email        = var.ses_sender_email
   ses_sender_identity_arn = var.ses_sender_identity_arn
-}
-
-module "nlb" {
-  source = "../../modules/nlb"
-
-  vpc_id             = module.vpc.vpc_id
-  env_suffix         = var.env_suffix
-  private_subnet_ids = module.vpc.private_subnet_ids
-  alb_arn            = module.alb.alb_arn
-  alb_listener_arn   = module.alb.listener_arn
-  certificate_arn    = var.acm_cert_arn
 }
 
 module "lambda" {
   source = "../../modules/lambda"
 
   env_suffix             = var.env_suffix
-  aws_region             = "us-east-1"
+  aws_region             = var.aws_region
   aws_account_id         = data.aws_caller_identity.current.account_id
   ecr_repository_urls    = module.ecr.repository_urls
   access_role_arn        = module.iam.lambda_exec_role_arns["access"]
@@ -173,34 +171,24 @@ module "lambda" {
   ses_sender_email       = var.ses_sender_email
 }
 
-resource "aws_cloudwatch_log_group" "api_gateway" {
-  name              = "/aws/apigateway/assine-api-${var.env_suffix}"
-  retention_in_days = 30
-
-  tags = {
-    Name        = "/aws/apigateway/assine-api-${var.env_suffix}"
-    Environment = var.env_suffix
-  }
-}
-
 module "api_gateway" {
   source = "../../modules/api-gateway"
 
   env_suffix                 = var.env_suffix
-  aws_region                 = "us-east-1"
-  nlb_dns                    = module.nlb.nlb_dns
-  nlb_arn                    = module.nlb.nlb_arn
+  aws_region                 = var.aws_region
+  vpc_link_subnet_ids        = module.vpc.private_subnet_ids
+  vpc_link_security_group_id = module.security_groups.sg_alb_id
+  alb_listener_arn           = module.alb.listener_arn
+  cognito_user_pool_id       = module.cognito.user_pool_id
   cognito_user_pool_arn      = module.cognito.user_pool_arn
+  cognito_client_ids         = [module.cognito.client_id_m2m, module.cognito.client_id_web]
   access_function_invoke_arn = module.lambda.access_function_invoke_arn
   access_function_arn        = module.lambda.access_function_arn
   access_function_name       = module.lambda.access_function_name
-  api_gateway_log_group_arn  = aws_cloudwatch_log_group.api_gateway.arn
   domain_name                = var.api_domain_name
   acm_cert_arn               = var.acm_cert_arn
-  openapi_body               = ""
-  openapi_spec_path          = "${path.module}/../../../../docs/api/openapi.yaml"
 
-  depends_on = [module.cognito, module.nlb]
+  depends_on = [module.cognito]
 }
 
 module "svc_subscriptions" {
@@ -214,8 +202,10 @@ module "svc_subscriptions" {
   cpu                     = 512
   memory                  = 1024
   container_port          = 8080
-  desired_count           = 2
-  subnet_ids              = module.vpc.private_subnet_ids
+  desired_count           = 1
+  subnet_ids              = module.vpc.public_subnet_ids
+  assign_public_ip        = true
+  use_fargate_spot        = true
   security_group_ids      = [module.security_groups.sg_ecs_tasks_id]
   task_execution_role_arn = module.iam.ecs_task_execution_role_arn
   task_role_arn           = module.iam.ecs_task_role_arns["subscriptions"]
@@ -223,11 +213,12 @@ module "svc_subscriptions" {
   path_patterns           = ["/subscriptions/*", "/plans/*"]
   priority                = 10
   log_group_name          = module.ecs_cluster.log_group_names["subscriptions"]
-  enable_otel_sidecar     = true
+  enable_otel_sidecar     = false
+  aws_region              = var.aws_region
 
   environment = [
     { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
-    { name = "AWS_REGION", value = "us-east-1" },
+    { name = "AWS_REGION", value = var.aws_region },
     { name = "SERVER_PORT", value = "8080" },
     { name = "COGNITO_ISSUER_URI", value = module.cognito.issuer_uri },
   ]
@@ -250,8 +241,10 @@ module "svc_billing" {
   cpu                     = 512
   memory                  = 1024
   container_port          = 8080
-  desired_count           = 2
-  subnet_ids              = module.vpc.private_subnet_ids
+  desired_count           = 1
+  subnet_ids              = module.vpc.public_subnet_ids
+  assign_public_ip        = true
+  use_fargate_spot        = true
   security_group_ids      = [module.security_groups.sg_ecs_tasks_id]
   task_execution_role_arn = module.iam.ecs_task_execution_role_arn
   task_role_arn           = module.iam.ecs_task_role_arns["billing"]
@@ -259,11 +252,12 @@ module "svc_billing" {
   path_patterns           = ["/billing/*", "/payments/*"]
   priority                = 20
   log_group_name          = module.ecs_cluster.log_group_names["billing"]
-  enable_otel_sidecar     = true
+  enable_otel_sidecar     = false
+  aws_region              = var.aws_region
 
   environment = [
     { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
-    { name = "AWS_REGION", value = "us-east-1" },
+    { name = "AWS_REGION", value = var.aws_region },
     { name = "SERVER_PORT", value = "8080" },
     { name = "COGNITO_ISSUER_URI", value = module.cognito.issuer_uri },
   ]
@@ -287,8 +281,10 @@ module "svc_content" {
   cpu                     = 512
   memory                  = 1024
   container_port          = 8080
-  desired_count           = 2
-  subnet_ids              = module.vpc.private_subnet_ids
+  desired_count           = 1
+  subnet_ids              = module.vpc.public_subnet_ids
+  assign_public_ip        = true
+  use_fargate_spot        = true
   security_group_ids      = [module.security_groups.sg_ecs_tasks_id]
   task_execution_role_arn = module.iam.ecs_task_execution_role_arn
   task_role_arn           = module.iam.ecs_task_role_arns["content"]
@@ -296,11 +292,12 @@ module "svc_content" {
   path_patterns           = ["/content/*", "/webhooks/notion"]
   priority                = 30
   log_group_name          = module.ecs_cluster.log_group_names["content"]
-  enable_otel_sidecar     = true
+  enable_otel_sidecar     = false
+  aws_region              = var.aws_region
 
   environment = [
     { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
-    { name = "AWS_REGION", value = "us-east-1" },
+    { name = "AWS_REGION", value = var.aws_region },
     { name = "SERVER_PORT", value = "8080" },
     { name = "COGNITO_ISSUER_URI", value = module.cognito.issuer_uri },
   ]
@@ -313,18 +310,19 @@ module "svc_content" {
 }
 
 module "monitoring" {
-  source        = "../../modules/monitoring"
-  env_suffix    = var.env_suffix
-  alert_email   = var.alert_email
-  service_names = ["billing", "content", "subscriptions"]
-  dlq_arns      = [for q in module.sqs.queues : q.dlq_arn]
-  cluster_name  = module.ecs_cluster.cluster_name
+  source         = "../../modules/monitoring"
+  env_suffix     = var.env_suffix
+  alert_email    = var.alert_email
+  service_names  = ["billing", "content", "subscriptions"]
+  dlq_arns       = [for q in module.sqs.queues : q.dlq_arn]
+  cluster_name   = module.ecs_cluster.cluster_name
+  alb_arn_suffix = module.alb.alb_arn_suffix
   # Map com chaves estaticas (conhecidas no plan) para permitir for_each no
   # modulo de monitoring mesmo antes dos target groups serem criados.
-  target_group_arns = {
-    billing       = module.svc_billing.target_group_arn
-    content       = module.svc_content.target_group_arn
-    subscriptions = module.svc_subscriptions.target_group_arn
+  target_group_arn_suffixes = {
+    billing       = module.svc_billing.target_group_arn_suffix
+    content       = module.svc_content.target_group_arn_suffix
+    subscriptions = module.svc_subscriptions.target_group_arn_suffix
   }
 }
 

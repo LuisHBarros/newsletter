@@ -9,6 +9,12 @@ variable "aws_region" {
   description = "AWS region for Cognito"
 }
 
+variable "account_id" {
+  type        = string
+  default     = ""
+  description = "AWS Account ID; used to namespace the globally-unique Cognito domain to avoid collisions across accounts"
+}
+
 variable "ses_sender_email" {
   type        = string
   description = "SES verified sender email for Cognito emails"

@@ -89,7 +89,9 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "assine-${var.env_suffix}"
+  # Dominio Cognito (prefixo) eh globalmente unico em TODA a AWS; inclui um
+  # sufixo derivado do account id para evitar colisoes em outras contas.
+  domain       = var.account_id != "" ? "assine-${var.env_suffix}-${substr(var.account_id, 0, 6)}" : "assine-${var.env_suffix}"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 

@@ -50,7 +50,6 @@ module "rds" {
   deletion_protection     = false
   skip_final_snapshot     = true
   multi_az                = false
-  enable_secret_rotation  = false
   env_suffix              = var.env_suffix
 }
 

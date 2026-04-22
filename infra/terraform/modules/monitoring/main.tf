@@ -36,15 +36,16 @@ resource "aws_cloudwatch_metric_alarm" "dlq_messages" {
   treat_missing_data  = "notBreaching"
 }
 
-# ECS CPU alarms (one per service)
+# ECS CPU alarms (one per service). Uses standard AWS/ECS metrics (free tier),
+# not Container Insights ECS/ContainerInsights (extra $).
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
   for_each = toset(var.service_names)
 
   alarm_name          = "assine-${var.env_suffix}-ecs-${each.value}-cpu-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "CpuUtilization"
-  namespace           = "ECS/ContainerInsights"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
   period              = 300
   statistic           = "Average"
   threshold           = 80
@@ -60,9 +61,11 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
   }
 }
 
-# ALB 5xx error alarms (one per target group)
+# ALB 5xx error alarms (one per target group). CloudWatch AWS/ApplicationELB
+# exige as dimensoes LoadBalancer=app/<name>/<id> e TargetGroup=targetgroup/<name>/<id>
+# (ARN suffixes). Passar o ARN cru zera os data points silenciosamente.
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
-  for_each = var.target_group_arns
+  for_each = var.target_group_arn_suffixes
 
   alarm_name          = "assine-${var.env_suffix}-${each.key}-alb-5xx-errors"
   comparison_operator = "GreaterThanThreshold"
@@ -79,6 +82,7 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    LoadBalancer = each.value
+    LoadBalancer = var.alb_arn_suffix
+    TargetGroup  = each.value
   }
 }

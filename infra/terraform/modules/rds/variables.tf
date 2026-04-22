@@ -63,24 +63,14 @@ variable "multi_az" {
   description = "Enable Multi-AZ deployment"
 }
 
-variable "enable_secret_rotation" {
-  type        = bool
-  default     = false
-  description = "Enable automatic secret rotation"
-}
-
-variable "secret_rotation_days" {
-  type        = number
-  default     = 30
-  description = "Secret rotation interval in days"
-}
-
 variable "aws_region" {
-  type    = string
-  default = "us-east-1"
+  type        = string
+  default     = "us-east-1"
+  description = "AWS region (used by downstream services, kept for parity with previous interface)"
 }
 
 variable "aws_account_id" {
-  type    = string
-  default = ""
+  type        = string
+  default     = ""
+  description = "AWS account ID (kept for parity with previous interface)"
 }

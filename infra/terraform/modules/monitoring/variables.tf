@@ -20,10 +20,15 @@ variable "dlq_arns" {
 
 variable "cluster_name" {
   type        = string
-  description = "ECS cluster name for Container Insights metrics"
+  description = "ECS cluster name for AWS/ECS metrics"
 }
 
-variable "target_group_arns" {
+variable "alb_arn_suffix" {
+  type        = string
+  description = "ALB ARN suffix (app/<name>/<id>) for CloudWatch LoadBalancer dimension"
+}
+
+variable "target_group_arn_suffixes" {
   type        = map(string)
-  description = "Map of service name -> ALB target group ARN. Keys devem ser estaticos (conhecidos no plan) para viabilizar for_each mesmo quando os ARNs ainda nao existem."
+  description = "Map of service name -> target group ARN suffix (targetgroup/<name>/<id>). Keys devem ser estaticos (conhecidos no plan) para viabilizar for_each mesmo quando os ARNs ainda nao existem."
 }

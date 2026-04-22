@@ -25,11 +25,11 @@ resource "random_password" "master" {
 resource "aws_db_subnet_group" "main" {
   count = length(var.private_subnet_ids) > 0 ? 1 : 0
 
-  name       = "assine-db-subnet"
+  name       = "assine-db-subnet-${var.env_suffix}"
   subnet_ids = var.private_subnet_ids
 
   tags = {
-    Name = "assine-db-subnet-group"
+    Name = "assine-db-subnet-group-${var.env_suffix}"
   }
 }
 
@@ -49,33 +49,17 @@ resource "aws_secretsmanager_secret_version" "master" {
   })
 }
 
-resource "aws_secretsmanager_secret_rotation" "master" {
-  count = var.enable_secret_rotation ? 1 : 0
-
-  secret_id = aws_secretsmanager_secret.master.id
-
-  rotation_lambda_arn = "arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:aws-secretsmanager-rotation-single-user"
-
-  rotation_rules {
-    automatically_after_days = var.secret_rotation_days
-  }
-}
-
-resource "aws_lambda_permission" "secretsmanager_rotation" {
-  count = var.enable_secret_rotation ? 1 : 0
-
-  statement_id  = "AllowSecretsManagerRotation"
-  action        = "lambda:InvokeFunction"
-  function_name = "aws-secretsmanager-rotation-single-user"
-  principal     = "secretsmanager.amazonaws.com"
-
-  source_arn = aws_secretsmanager_secret.master.arn
-}
+# Nota: rotacao automatica de secret (aws_secretsmanager_secret_rotation)
+# foi removida. A iteracao anterior apontava para a Lambda do SAR
+# `aws-secretsmanager-rotation-single-user` por ARN hardcoded, mas essa
+# Lambda NAO eh provisionada automaticamente na conta AWS -- quando ligada,
+# falhava no apply. Se rotacao for necessaria, provisione a SAR stack ou
+# use `aws_secretsmanager_secret_rotation` com uma Lambda propria.
 
 resource "aws_db_instance" "main" {
   count = length(var.private_subnet_ids) > 0 ? 1 : 0
 
-  identifier     = "assine-db"
+  identifier     = "assine-db-${var.env_suffix}"
   engine         = "postgres"
   engine_version = "15"
   instance_class = "db.t4g.micro"
@@ -91,11 +75,15 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = try(aws_db_subnet_group.main[0].name, null)
   vpc_security_group_ids = [var.sg_rds_id]
 
-  multi_az                        = var.multi_az
-  backup_retention_period         = var.backup_retention_period
-  deletion_protection             = var.deletion_protection
-  skip_final_snapshot             = var.skip_final_snapshot
-  performance_insights_enabled    = true
+  multi_az                = var.multi_az
+  backup_retention_period = var.backup_retention_period
+  deletion_protection     = var.deletion_protection
+  skip_final_snapshot     = var.skip_final_snapshot
+
+  # Performance Insights eh gratis em db.t4g.micro com retencao padrao de 7d.
+  performance_insights_enabled          = true
+  performance_insights_retention_period = 7
+
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
   lifecycle {
@@ -103,7 +91,7 @@ resource "aws_db_instance" "main" {
   }
 
   tags = {
-    Name = "assine-db"
+    Name = "assine-db-${var.env_suffix}"
   }
 }
 
@@ -134,32 +122,17 @@ resource "aws_secretsmanager_secret_version" "app_users" {
   })
 }
 
-resource "null_resource" "db_bootstrap_deps" {
-  count = length(var.private_subnet_ids) > 0 ? 1 : 0
-
-  # Inclui a versao do script de install como trigger para forcar reinstalacao
-  # quando o layout de deps muda (ex.: passamos de files/python para files/).
-  triggers = {
-    requirements = fileexists("${path.module}/files/requirements.txt") ? filemd5("${path.module}/files/requirements.txt") : "none"
-    install_cmd  = "v2-flat-layout"
-  }
-
-  # Instala dependencias diretamente no diretorio da funcao (nao em python/),
-  # pois o zip eh a propria funcao Lambda e nao um Layer. Dependencias em
-  # python/ so funcionariam como Layer.
-  provisioner "local-exec" {
-    command = "rm -rf ${path.module}/files/python && pip install -q -r ${path.module}/files/requirements.txt -t ${path.module}/files --upgrade"
-  }
-}
-
+# A3: A instalacao das dependencias pip eh feita pelo CI (workflow deploy.yml)
+# ou manualmente em maquinas locais antes do apply. Removemos o null_resource
+# com local-exec para (1) nao depender de pip na maquina do terraform, (2)
+# nao colidir com o passo equivalente do CI, (3) permitir apply off-line.
+# Ver README secao "Lambda db_bootstrap".
 data "archive_file" "db_bootstrap" {
   count = length(var.private_subnet_ids) > 0 ? 1 : 0
 
   type        = "zip"
   source_dir  = "${path.module}/files"
   output_path = "${path.module}/db_bootstrap.zip"
-
-  depends_on = [null_resource.db_bootstrap_deps]
 }
 
 resource "aws_iam_role" "db_bootstrap" {

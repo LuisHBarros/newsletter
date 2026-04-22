@@ -31,6 +31,9 @@ resource "aws_lb" "main" {
   }
 }
 
+# Listener HTTP 80: redirect para HTTPS. API Gateway + VPC Link v2 falam com
+# o ALB via HTTPS no listener abaixo; este listener existe apenas como
+# fallback defensivo (qualquer cliente interno que use 80 eh redirecionado).
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
@@ -47,27 +50,10 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-resource "aws_lb_listener_rule" "healthz" {
-  listener_arn = aws_lb_listener.http.arn
-  priority     = 1
-
-  action {
-    type = "fixed-response"
-
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "ok"
-      status_code  = "200"
-    }
-  }
-
-  condition {
-    path_pattern {
-      values = ["/healthz"]
-    }
-  }
-}
-
+# Listener HTTPS 443: default eh 404. As regras por servico sao criadas pelo
+# modulo ecs-service (path_pattern + forward ao target group). As regras de
+# /healthz que existiam aqui (para health check do NLB) foram removidas
+# junto com o modulo NLB -- API Gateway v2 integra diretamente com o ALB.
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
   port              = 443
@@ -82,27 +68,6 @@ resource "aws_lb_listener" "https" {
       content_type = "application/json"
       message_body = "{\"error\":\"Not Found\"}"
       status_code  = "404"
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "healthz_https" {
-  listener_arn = aws_lb_listener.https.arn
-  priority     = 1
-
-  action {
-    type = "fixed-response"
-
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "ok"
-      status_code  = "200"
-    }
-  }
-
-  condition {
-    path_pattern {
-      values = ["/healthz"]
     }
   }
 }

@@ -3,6 +3,12 @@ variable "env_suffix" {
   description = "Environment suffix for resource names"
 }
 
+variable "aws_region" {
+  type        = string
+  default     = "us-east-1"
+  description = "AWS region for all resources"
+}
+
 variable "acm_cert_arn" {
   type        = string
   description = "ACM certificate ARN for HTTPS listener"

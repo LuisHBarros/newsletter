@@ -12,9 +12,11 @@ terraform {
 resource "aws_ecs_cluster" "main" {
   name = "${var.name}-${var.env_suffix}"
 
+  # Container Insights adiciona metrics/logs custom que estouram o free tier
+  # do CloudWatch. Usamos metrics padrao AWS/ECS (ver modulo monitoring).
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = var.enable_container_insights ? "enabled" : "disabled"
   }
 
   tags = {
@@ -22,11 +24,20 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
+# Attach FARGATE + FARGATE_SPOT capacity providers ao cluster. Permite que
+# cada service escolha entre on-demand (FARGATE) e spot (FARGATE_SPOT) via
+# capacity_provider_strategy. Nao definimos default aqui; o service define
+# explicitamente.
+resource "aws_ecs_cluster_capacity_providers" "main" {
+  cluster_name       = aws_ecs_cluster.main.name
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
+}
+
 resource "aws_cloudwatch_log_group" "service" {
   for_each = toset(var.services)
 
   name              = "/ecs/${var.env_suffix}/${each.value}"
-  retention_in_days = 30
+  retention_in_days = var.log_retention_days
 
   tags = {
     Name = "/ecs/${var.env_suffix}/${each.value}"

@@ -268,12 +268,16 @@ data "aws_iam_policy_document" "github_oidc_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # B1: remove trust para `pull_request` generico. PRs de forks podiam
+    # disparar a assume (mesmo que os steps de AWS no workflow estejam
+    # gated em github.event_name != 'pull_request', a trust policy em si
+    # era larga demais). Mantemos apenas refs da main e tags v*.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
         "repo:${var.github_repo}:ref:refs/heads/main",
-        "repo:${var.github_repo}:pull_request",
+        "repo:${var.github_repo}:ref:refs/tags/v*",
       ]
     }
   }

@@ -49,7 +49,19 @@ variable "vpc_id" {
 
 variable "subnet_ids" {
   type        = list(string)
-  description = "Private subnet IDs"
+  description = "Subnet IDs for the ECS service tasks. Pode ser publicas (com assign_public_ip=true) para evitar NAT Gateway no Free Tier/budget."
+}
+
+variable "assign_public_ip" {
+  type        = bool
+  default     = false
+  description = "Atribui IP publico as ENIs das tasks. Necessario quando rodam em subnets publicas sem NAT para egress (ECR/Secrets/Logs)."
+}
+
+variable "use_fargate_spot" {
+  type        = bool
+  default     = false
+  description = "Usa FARGATE_SPOT via capacity_provider_strategy (ate -70% no custo). Requer FARGATE_SPOT no cluster."
 }
 
 variable "security_group_ids" {

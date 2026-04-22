@@ -117,14 +117,29 @@ resource "aws_ecs_service" "this" {
   cluster                            = var.cluster_arn
   task_definition                    = aws_ecs_task_definition.this.arn
   desired_count                      = var.desired_count
-  launch_type                        = "FARGATE"
   health_check_grace_period_seconds  = 60
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 100
 
+  # launch_type e capacity_provider_strategy sao mutuamente exclusivos.
+  # Quando use_fargate_spot=true usamos o strategy; senao fallback para
+  # o launch_type FARGATE classico.
+  dynamic "capacity_provider_strategy" {
+    for_each = var.use_fargate_spot ? [1] : []
+    content {
+      capacity_provider = "FARGATE_SPOT"
+      weight            = 1
+      base              = 0
+    }
+  }
+
+  # launch_type so quando nao estamos usando capacity providers.
+  launch_type = var.use_fargate_spot ? null : "FARGATE"
+
   network_configuration {
-    subnets         = var.subnet_ids
-    security_groups = var.security_group_ids
+    subnets          = var.subnet_ids
+    security_groups  = var.security_group_ids
+    assign_public_ip = var.assign_public_ip
   }
 
   load_balancer {
