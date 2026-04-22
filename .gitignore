@@ -8,3 +8,6 @@
 /infra/terraform/modules/rds/files/*
 !/infra/terraform/modules/rds/files/db_bootstrap.py
 !/infra/terraform/modules/rds/files/requirements.txt
+.agents/
+.vscode/
+skills-lock.json
