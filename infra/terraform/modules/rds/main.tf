@@ -25,11 +25,14 @@ resource "random_password" "master" {
 resource "aws_db_subnet_group" "main" {
   count = length(var.private_subnet_ids) > 0 ? 1 : 0
 
-  name       = "assine-db-subnet-${var.env_suffix}"
+  # NAO renomeie este recurso: `name` eh usado como identificador fisico
+  # pela AWS. Adicionar sufixo de env forca delete+recreate, que falha
+  # enquanto o aws_db_instance existente aponta para ele.
+  name       = "assine-db-subnet"
   subnet_ids = var.private_subnet_ids
 
   tags = {
-    Name = "assine-db-subnet-group-${var.env_suffix}"
+    Name = "assine-db-subnet-group"
   }
 }
 
@@ -59,7 +62,10 @@ resource "aws_secretsmanager_secret_version" "master" {
 resource "aws_db_instance" "main" {
   count = length(var.private_subnet_ids) > 0 ? 1 : 0
 
-  identifier     = "assine-db-${var.env_suffix}"
+  # NAO adicione var.env_suffix aqui: `identifier` eh usado pela AWS como
+  # chave fisica; renomear forca destroy+recreate da instancia (perda de
+  # dados). A segregacao entre dev e prod ja eh feita por conta AWS.
+  identifier     = "assine-db"
   engine         = "postgres"
   engine_version = "15"
   instance_class = "db.t4g.micro"
