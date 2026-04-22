@@ -57,6 +57,33 @@ jobs:
               - 'infra/**'
               - 'docs/api/**'
 
+  # Lint/validate/plan em PRs: gate rapido para mudancas de infra. Nao faz
+  # apply, nao assume role de deploy. Roda em todo PR que toque infra/**.
+  infra-validate:
+    needs: detect-changes
+    if: |
+      (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == 'true') &&
+      github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.5"
+
+      - name: Install Lambda bootstrap dependencies
+        run: pip install -q -r infra/terraform/modules/rds/files/requirements.txt -t infra/terraform/modules/rds/files --upgrade
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive infra/terraform/
+
+      - name: terraform validate (prod)
+        working-directory: infra/terraform/envs/prod
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
   # Fase 1 do apply: cria apenas os recursos de base que precisam existir
   # ANTES do build/push das imagens (ECR, VPC, IAM, RDS, SQS, Cognito).
   # Em pushes subsequentes sem mudanca em infra/** este job eh pulado.
@@ -70,6 +97,7 @@ jobs:
     if: |
       (needs.detect-changes.outputs.infra == 'true' || inputs.force_deploy == 'true') &&
       github.event_name != 'pull_request'
+    environment: prod
     env:
       TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
       TF_VAR_ses_sender_identity_arn: ${{ secrets.SES_SENDER_IDENTITY_ARN }}
@@ -99,7 +127,9 @@ jobs:
         run: |
           # module.lambda NAO eh alvo aqui de proposito: as Lambdas referenciam
           # ${ecr_repo}:latest, que so passa a existir apos build-lambda-go.
-          # O apply completo em deploy-infra (Fase 2) cria as Lambdas com as
+          # module.nlb foi removido na iteracao Free Tier (API Gateway v2 +
+          # VPC Link v2 falam direto com o ALB). O apply completo em
+          # deploy-infra (Fase 2) cria as Lambdas e o API Gateway v2 com as
           # imagens ja publicadas.
           terraform apply -input=false -auto-approve \
             -var-file=prod.tfvars \
@@ -342,6 +372,7 @@ jobs:
       needs.infra-bootstrap.result == 'success' &&
       (needs.build-java.result == 'success' || needs.build-java.result == 'skipped') &&
       (needs.build-lambda-go.result == 'success' || needs.build-lambda-go.result == 'skipped')
+    environment: prod
     env:
       TF_VAR_acm_cert_arn: ${{ secrets.ACM_CERT_ARN }}
       TF_VAR_ses_sender_identity_arn: ${{ secrets.SES_SENDER_IDENTITY_ARN }}
@@ -361,20 +392,36 @@ jobs:
         with:
           terraform_version: "~1.5"
 
+      # W5: na primeira execucao de cada servico ainda nao existe uma tag
+      # SHA publicada (build-java/build-lambda-go so roda quando o servico
+      # foi modificado). Nesse caso aceitamos :latest como fallback para
+      # permitir o bootstrap inicial. Em execucoes subsequentes exigimos a
+      # tag SHA para nao criar deriva silenciosa entre git e ECS.
       - name: Verify ECR images exist before apply
         env:
           IMAGE_TAG: ${{ github.sha }}
+          BOOTSTRAP_RAN: ${{ needs.infra-bootstrap.outputs.ran }}
         run: |
+          set -euo pipefail
           for svc in access notifications billing content subscriptions; do
-            aws ecr describe-images \
-              --repository-name assine/$svc \
-              --image-ids imageTag=$IMAGE_TAG \
-              --region ${{ env.AWS_REGION }} 2>/dev/null || \
-            aws ecr describe-images \
-              --repository-name assine/$svc \
-              --image-ids imageTag=latest \
-              --region ${{ env.AWS_REGION }} || \
-              (echo "No image for assine/$svc found in ECR. Aborting." && exit 1)
+            if aws ecr describe-images \
+                 --repository-name assine/$svc \
+                 --image-ids imageTag=$IMAGE_TAG \
+                 --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+              echo "OK: assine/$svc:$IMAGE_TAG present"
+              continue
+            fi
+            # Aceita :latest APENAS quando a infra-bootstrap rodou nesta
+            # execucao (primeira vez ou infra/** mudou). Fora disso, falha.
+            if [ "$BOOTSTRAP_RAN" = "true" ] && aws ecr describe-images \
+                 --repository-name assine/$svc \
+                 --image-ids imageTag=latest \
+                 --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+              echo "::warning::assine/$svc:$IMAGE_TAG ausente; usando :latest (bootstrap)"
+              continue
+            fi
+            echo "::error::Nenhuma imagem assine/$svc:$IMAGE_TAG no ECR e bootstrap nao rodou. Abortando para evitar deploy com imagem stale."
+            exit 1
           done
 
       - name: Terraform Init
